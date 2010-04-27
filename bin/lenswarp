@@ -1,0 +1,387 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 3/21/2008 .......... revised 3/24/2008
+#
+# USAGE: lenswarp [-s shape] [-m mode] [-n index] [-t thick] [-l limit] [-b bgcolor] infile outfile
+# USAGE: lenswarp [-h or -help]
+#
+# OPTIONS:
+#
+# -s      shape         lens shape=ellipsoid or paraboloid; 
+#                       default=ellipsoid
+# -m      mode          mode=convex or concave; default=convex;
+# -n      index         index of refraction for lens; float > 0;
+#                       default=1.7 for normal glass
+# -t      thick         thickness factor for the lens; multiplier of 
+#                       default center thickness which is equal to the 
+#                       the smaller of the image dimensions; float > 0;
+#                       default=1 (produces a hemispherical lens for a
+#                       square image)
+# -l                    limits image to circular or elliptical area;
+#                       limit=none, circle or ellipse; default=none;
+#                       for shape=ellipse, none and ellipse are 
+#                       equivalent; for shape=parabola, all options
+#                       are different
+# -b      bgcolor       bgcolor is the color for the area outside the 
+#                       circular/oval area; default=black
+# 
+###
+#
+# NAME: LENSWARP 
+# 
+# PURPOSE: To simulate the effect of looking at a picture through a 
+# one side curved and one side flat lens sitting with the flat side 
+# against a picture.
+# 
+# DESCRIPTION: LENSWARP simulates the effect of looking at a picture 
+# through a one side curved and one side flat lens sitting with the flat  
+# side against a picture. Choice of lens shapes are convex ellipsoid, 
+# concave ellipsoid, concave elliptic paraboloid and convex elliptic 
+# paraboloid. The main control is the index of refraction of the lens 
+# material. The default is 1.7 for normal glass. The thickness of the 
+# lens may also be set as a multiplier of the default setting, which 
+# produces a hemispherical lens for a square image.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -s shape ... SHAPE is either ellipsoid or paraboloid. The default is 
+# ellipsoid. 
+# 
+# -m mode ... MODE is either convex of concave. The default is convex. 
+# 
+# -n index ... INDEX is the index of refraction of the lens. Values are 
+# floats > 0 (although values < 1 are not physical). The default is 1.7 
+# for normal glass.  
+# 
+# -t thick ... THICK is a thickness factor for the lens. It is a multiplier 
+# for the default thickness, which is set to the minimum of the width or 
+# height of the image. Values are floats > 0. The default is 1, which for a 
+# square image makes the lens into a hemisphere.
+# 
+# -l ... Limits the image to a circular or elliptical area. The choices are 
+# none, circle or ellipse. For shape=ellipsoid this is pertinent only for 
+# non-square images, which would normally produce an elliptical area surrounded 
+# by background color. Values of none and ellipse are equivalent as the lens 
+# has a finite extent equal to the dimensions of the image and will naturally 
+# produce an image limited to a circle/ellipse for a square/rectangular image 
+# with a background colored area around it. A value of circle for a rectangular 
+# image will force the dimensions of the lens to be a circle of diameter equal 
+# to the smaller of the image width or height. For shape=paraboloid this is always 
+# pertinent as the parabola has infinite extent. Setting the value to none allows 
+# the image to be filled with no background. Setting the value to ellipse trims 
+# the image to an elliptical/circular area surrounded by background color, where 
+# the elliptical/circular area spans the image dimensions whether the image is 
+# rectangular or square. Setting the value to circle trims the image to a circular  
+# area surrounded by background color. For a square image this is equivalent to 
+# a value of ellipse. However, a rectangular image will be trimmed to a circular 
+# area whose diameter equals the smaller of the image width or height. The 
+# default is none.
+# 
+# -b bgcolor ... BGCOLOR is the color to use to fill the area outside the 
+# nominal or limited area of the image. Color may be any valid IM color 
+# specification or none (for transparent). Be sure to enclose it in double 
+# quotes if not using a color name. In addition, there is a special option, 
+# bgcolor=image, that uses the original image as background. The default is 
+# black. 
+# 
+# NOTE: This script uses -fx to compute a rather complex equation and 
+# therefore it will be very slow. A 128x128 image on my 1.42 GHz PowerPC 
+# Mac Mini takes about 9-10 minutes to finish. If physical accuracy is 
+# not needed, then try using bubblewarp in polar mode or lupe with no 
+# border and distortion for limiting the effect to a small area. They  
+# produce similar looking results and, although they also use -fx, the 
+# equations are much simpler and therefore processing is faster.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default value
+shape="ellipsoid"
+mode="convex"
+na=1				# index of refraction of air
+ng=1.7				# index of reraction of glass
+thick=1.0			# thickness factor; factor of c coefficient
+limit="none"		# limit image area
+bg="black"			# background color
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 14 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-s)    # get  shape
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SHAPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   shape="$1"
+					   [ "$shape" != "ellipsoid" -a "$shape" != "paraboloid" ] && errMsg "--- INVALID SHAPE VALUE ---"
+					   ;;
+				-m)    # get  mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode="$1"
+					   [ "$mode" != "convex" -a "$mode" != "concave" ] && errMsg "--- INVALID MODE VALUE ---"
+					   ;;
+				-n)    # get  index of refaction ng
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID INDEX OF REFRACTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   ng=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$ng" = "" ] && errMsg "--- INDEX OF REFRACTION=$ng MUST BE A FLOATING POINT VALUE (with no sign) ---"
+					   ngtest=`echo "$mag <= 0" | bc`
+					   [ $ngtest -eq 1 ] && errMsg "--- INDEX OF REFRACTION=$ng MUST BE A POSITIVE FLOATING POINT VALUE ---"
+					   ;;
+				-t)    # get  thick
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THICKNESS FACTOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   thick=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$thick" = "" ] && errMsg "--- THICKNESS FACTOR=$thick MUST BE A FLOATING POINT VALUE (with no sign) ---"
+					   thicktest=`echo "$thick <= 0" | bc`
+					   [ $thicktest -eq 1 ] && errMsg "--- THICKNESS FACTOR=$thick MUST BE A POSITIVE FLOATING POINT VALUE ---"
+					   ;;
+				-l)    # get  limit
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID LIMIT SPECIFICATION ---"
+					   checkMinus "$1"
+					   limit="$1"
+					   [ "$limit" != "none" -a "$limit" != "circle" -a "$limit" != "ellipse" ] && errMsg "--- INVALID LIMIT VALUE ---"
+					   ;;
+				-b)    # get  bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BACKGROUND COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bg="$1"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+: '
+NOTES:
+
+Distortion by Snell Law n1*sin(a1) = n2*sin(a2) for lens defined as 
+one side flat and one side convex/concave ellipsoid or elliptic paraboloid
+
+basic convex ellipsoid equation:  X^2/a^2 + Y^2/b^2 + Z^2/c^2 = 1
+basic convcave ellipsoid equation:  X^2/a^2 + Y^2/b^2 + Z^2/c^2 -2*Z/c = 0
+basic concave paraboloid equation:  X^2/a^2 + Y^2/b^2 - 2*Z/c = 0
+basic convex paraboloid equation:  X^2/a^2 + Y^2/b^2 + 2*Z/c = 2
+
+convex ellipsoid surace normal:  (a^2/c^2)*Z/X = tan(theta)
+concave ellipsoid surace normal:  (a^2/c^2)*(Z-c)/X = tan(theta)
+concave paraboloid surace normal:  -(a^2/c)/X = tan(theta)
+convex paraboloid surace normal:  (a^2/c)/X = tan(theta)
+'
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+tmpA="$dir/lens_$$.mpc"
+tmpB="$dir/lens_$$.cache"
+tmp0="$dir/lens_$$.png"
+trap "rm -f $tmpA $tmpB $tmp0; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0; exit 1" 1 2 3 15
+
+if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
+	then
+	width=`identify -format %w $tmpA`
+	height=`identify -format %h $tmpA`
+
+	# compute center of image
+	xc=`echo "scale=1; ($width - 1) / 2" | bc`
+	yc=`echo "scale=1; ($height -1) / 2" | bc`
+
+	# compute ratio of indices of refraction
+	rr=`echo "scale=5; $na / $ng" | bc`
+	
+	# compute lens equation coefficients
+	a=`echo "scale=1; $width / 2" | bc`
+	b=`echo "scale=1; $height / 2" | bc`
+	minab=`convert xc: -format "%[fx:min($a,$b)]" info:`
+	if [ "$limit" = "circle" ]
+		then
+		a=$minab
+		b=$minab
+	fi
+	c=`echo "scale=5; $thick * $minab / 1" | bc`
+	a2=`echo "scale=5; $a * $a / 1" | bc`
+	b2=`echo "scale=5; $b * $b / 1" | bc`
+	c2=`echo "scale=5; $c * $c / 1" | bc`
+	a2c2=`echo "scale=5; $a2 / $c2" | bc`
+	b2c2=`echo "scale=5; $b2 / $c2" | bc`
+
+	# compute pi/2
+	pid2=`echo "scale=6; 2*a(1)" | bc -l`
+	else
+		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+fi
+
+# define z coordinate for each shape and form
+# xag and yag (glass Snell angles) are 90-atan(slope of normal to surface at point xd,zd or yd,zd)
+rrd="rrd=(xd*xd/$a2)+(yd*yd/$b2);"
+if [ "$shape" = "ellipsoid" -a "$mode" = "convex" ]
+	then
+	zd="zd=$c*sqrt(1-rrd);"
+	xag="xag=$pid2-atan2($a2c2*zd,xd);"
+	yag="yag=$pid2-atan2($b2c2*zd,yd);"
+
+elif [ "$shape" = "ellipsoid" -a "$mode" = "concave" ]
+	then
+	zd="zd=$c*(1-sqrt(1-rrd));"
+	xag="xag=$pid2-atan2($a2c2*(zd-c),xd);"
+	yag="yag=$pid2-atan2($b2c2*(zd-c),yd);"
+
+elif [ "$shape" = "paraboloid" -a "$mode" = "convex" ]
+	then
+	c2=`echo "scale=5; $c / 2" | bc`
+	a2c=`echo "scale=5; $a2 / $c" | bc`
+	b2c=`echo "scale=5; $b2 / $c" | bc`
+	zd="zd=$c2*(2-rrd);"
+	xag="xag=$pid2-atan2(-$a2c,xd);"
+	yag="yag=$pid2-atan2(-$b2c,yd);"
+
+elif [ "$shape" = "paraboloid" -a "$mode" = "concave" ]
+	then
+	c2=`echo "scale=5; $c / 2" | bc`
+	a2c=`echo "scale=5; $a2 / $c" | bc`
+	b2c=`echo "scale=5; $b2 / $c" | bc`
+	zd="zd=$c2*rrd;"
+	xag="xag=$pid2-atan2($a2c,xd);"
+	yag="yag=$pid2-atan2($b2c,yd);"
+fi
+
+# set background color to none (transparent) for special case of bg=image
+if [ "$bg" = "image" ]
+	then
+	bg1="none"
+else
+	bg1=$bg
+fi
+
+# set paraboloid result depending upon whether image is limited to circle
+# for paraboloid only
+if [ "$shape" = "paraboloid" -a "$limit" = "none" ]
+	then
+	result="u.p{xs,ys}"
+else
+	result="rrd>1?$bg1:u.p{xs,ys}"
+fi
+
+# define rest of equation common to all shapes for use in -fx
+# xaa and yaa (air Snell angles) are computed by Snell's law from xag and yag
+xaa="xaa=asin($rr*sin(xag));"
+xda="xda=(xaa-xag)/2;"
+xs="xs=xd+2*zd*sin(xda)*cos(xda)+$xc;"
+
+yaa="yaa=asin($rr*sin(yag));"
+yda="yda=(yaa-yag)/2;"
+ys="ys=yd+2*zd*sin(yda)*cos(yda)+$yc;"
+
+# set outfile to composite with infile for special case of bg=image
+if [ "$bg" = "image" ]
+	then
+	alpha="-matte -channel RGBA"
+	out="$tmpA +swap -composite $outfile"
+elif [ "$bg" = "none" ]
+	then
+	alpha="-matte -channel RGBA"
+	out="$outfile"
+else
+	alpha=""
+	out="$outfile"
+fi
+
+echo ""
+echo "Please Wait - Progress Reporting"
+echo ""
+
+# process image
+convert $tmpA $alpha -background $bg1 -monitor -fx \
+	"xd=(i-$xc); yd=(j-$yc); $rrd $zd $xag $xaa $xda $xs $yag $yaa $yda $ys $result" \
+	$out
+
+exit 0

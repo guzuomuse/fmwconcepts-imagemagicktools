@@ -1,0 +1,255 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 4/7/2010 .......... revised 4/7/2010
+# 
+# USAGE: emboss [-m method] [-a azimuth] [-e elevation] [-d depth] [-i intensity] infile outfile
+# USAGE: emboss [-h or -help]
+# 
+# OPTIONS:
+# 
+# -m      method            method of embossing; choices are 1 or 2;
+#                           1 simulates the GIMP approach;
+#                           2 simulates the Photoshop approach; default=1
+# -a      azimuth           azimuth angle for light source; 0<=integer<=360; 
+#                           counterclockwise from positive x axis (East);
+#                           default=135 (NorthWest)
+# -e      elevation         elevation angle for light source; 0<=integer<=90;
+#                           upwards from x-y plane; default=45; only for method=1
+# -d      depth             depth of emboss effect; integer>0; default=1
+# -i      intensity         intensity of emboss effect; -50<=integer<=50; 
+#                           default=0; only for method=2
+# 
+###
+# 
+# NAME: EMBOSS 
+# 
+# PURPOSE: To apply an emboss effect to an image.
+# 
+# DESCRIPTION: EMBOSS applies an emboss effect to an image. Two methods are 
+# available. The first simulates the GIMP approach. The second simulates the
+# Photoshop approach.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -m method ... METHOD of embossing. The choices are 1 or 2. Method 1 simulates 
+# the GIMP approach and uses parameters of azimuth, elevation and depth. The 
+# second simulates the Photoshop approach and uses parameters of azimuth, 
+# depth and intensity. The default=1.
+# 
+# -a azimuth ... AZIMUTH is the angle in degrees in the x-y plane measured 
+# counterclockwise from EAST to the light source. Values are integers in the 
+# range 0<=azimuth<=360. The default=135 (NorthWest).
+# 
+# -e elevation ... ELEVATION is the angle in degrees upwards from the x-y plane 
+# to the light source. Values are integers in the range 0<=elevation<=90. 
+# The default=45. Note this parameter is only used with method=1
+# 
+# -d depth ... DEPTH controls the depth effect in the embossing. For method=1, 
+# it adjust the contrast of the emboss effect. For method=2, it adjust the 
+# separation in pixels of the dark and light parts. Values are integers>0. 
+# The default=1
+# 
+# -i intensity ... INTENSITY controls the contrast of the emboss effect in 
+# method=2. Values are integers in the range of -50<=intensity<=50. Positive 
+# values increase the contrast and negative values decrease the contrast. 
+# The default=0
+# 
+# REQUIREMENTS: IM 6.5.3-4 in order to support -set option:compose:args in 
+# method 2 and IM 6.4.8-8 in order to support -function polynomial in method 1.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+method=2			# 1=GIMP; 2=PS
+azimuth=135			# azimuth angle for light source
+elevation=45		# elevation angle for light source; method=1 only
+depth=1 			# depth factor
+intensity=0			# intensity change percent -50<=integer<=50; method=2 only
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 12 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # get method
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID METHOD SPECIFICATION ---"
+					   checkMinus "$1"
+					   method=`expr "$1" : '\([0-9]*\)'`
+					   [ "$method" = "" ] && errMsg "--- METHOD=$method MUST BE A NON-NEGATIVE INTEGER ---"
+					   [ $method -ne 1 -a $method -ne 2 ] && errMsg "--- METHOD=$method MUST BE EITHER 1 OR 2 ---"
+					   ;;
+				-a)    # get azimuth
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID AZUMUTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   azimuth=`expr "$1" : '\([0-9]*\)'`
+					   [ "$azimuth" = "" ] && errMsg "--- AZUMUTH=$azimuth MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$azimuth < 0" | bc`
+					   test2=`echo "$azimuth > 360" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- AZUMUTH=$azimuth MUST BE AN INTEGER BETWEEN 0 AND 360 ---"
+					   ;;
+				-e)    # get elevation
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ELEVATION SPECIFICATION ---"
+					   checkMinus "$1"
+					   elevation=`expr "$1" : '\([0-9]*\)'`
+					   [ "$elevation" = "" ] && errMsg "--- ELEVATION=$elevation MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$elevation < 0" | bc`
+					   test2=`echo "$elevation > 90" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- ELEVATION=$elevation MUST BE AN INTEGER BETWEEN 0 AND 90 ---"
+					   ;;
+				-d)    # get  depth
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DEPTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   depth=`expr "$1" : '\([0-9]*\)'`
+					   [ "$depth" = "" ] && errMsg "--- DEPTH=$depth MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test=`echo "$depth < 1" | bc`
+					   [ $test -eq 1 ] && errMsg "--- DEPTH=$depth MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-i)    # get intensity
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   #errorMsg="--- INVALID INTENSITY SPECIFICATION ---"
+					   #checkMinus "$1"
+					   intensity=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$intensity" = "" ] && errMsg "--- INTENSITY=$intensity MUST BE AN INTEGER VALUE ---"
+					   test1=`echo "$intensity < -50" | bc`
+					   test2=`echo "$intensity > 50" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- INTENSITY=$intensity MUST BE AN INTEGER BETWEEN -50 AND 50 ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# setup temporary images and auto delete upon exit
+tmpA1="$dir/emboss_1_$$.mpc"
+tmpB1="$dir/emboss_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image and filter image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" -colorspace gray +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
+if [ $method -eq 1 ]; then
+	[ "$im_version" -lt "06040808" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
+	convert $tmpA1 -shade ${azimuth}x${elevation} $tmpA1
+	mean=`convert $tmpA1 -format "%[fx:mean]" info:`
+	aa=$depth
+	bb=`convert xc: -format "%[fx:$mean*(1-$depth)]" info:`
+	convert $tmpA1 -function polynomial "$aa,$bb" $outfile
+	
+elif [ $method -eq 2 ]; then
+	xdist1=`convert xc: -format "%[fx:cos(pi*(180-$azimuth)/180)*$depth/2]" info:`
+	ydist1=`convert xc: -format "%[fx:sin(pi*(180-$azimuth)/180)*$depth/2]" info:`
+	xdist2=`convert xc: -format "%[fx:-$xdist1]" info:`
+	ydist2=`convert xc: -format "%[fx:-$ydist1]" info:`
+	intensity1=`convert xc: -format "%[fx:100-abs($intensity)]" info:`
+	test=`convert xc: -format "%[fx:$intensity<0?1:0]" info:`
+	if [ $test -eq 0 ]; then
+		levelize="-level $intensity1%"
+	else
+		levelize="+level $intensity1%"
+	fi
+	
+	[ "$im_version" -lt "06050403" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
+	convert $tmpA1 \( -clone 0 -negate \) \
+		\( -clone 0 -distort SRT "0,0 1 0 $xdist2,$ydist2" \) \
+		\( -clone 1 -distort SRT "0,0 1 0 $xdist1,$ydist1" \) \
+		-delete 0,1 -compose blend -set option:compose:args 50 -composite \
+		$levelize $outfile
+fi
+exit 0
+
+

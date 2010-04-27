@@ -1,0 +1,224 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 3/24/2008 .......... revised 12/20/2009
+#
+# USAGE: colorspectrum [-c columns] [-r rows] [-l] infile outfile
+# USAGE: colorspectrum [-h or -help]
+#
+# OPTIONS:
+#
+# -c        columns      width of spectrum; determines the maximum 
+#                        number of colors; 1<=columns<=255; default=255
+# -r        rows         height of spectrum; rows>=1; default=50
+# -l                     displays a list of colors to the terminal
+#
+###
+#
+# NAME: COLORSPECTRUM 
+# 
+# PURPOSE: To generate a spectrum-like image from the colors in an image. 
+# 
+# DESCRIPTION: PROFILE generates generate a spectrum-like image from the 
+# colors in an image. It uses a color reduction algorithm to extract the  
+# specified number of colors. Then it sorts the colors according to hue and 
+# creates an image of the specified height and width. See 
+# http://www.imagemagick.org/script/quantize.php for a description of the 
+# color reduction algorithm.
+# 
+# 
+# OPTIONS: 
+# 
+# -c columns ... COLUMNS is the width of the spectrum and also determines the 
+# number of colors to try to generate. Allowed values are integers between 
+# 1 and 255. Note that it is possible that the color reduction algorithm will  
+# produce fewer, but never more colors than desired. If fewer colors are 
+# generated, then they will show as black areas on the left side of the  
+# spectrum. The default is 255.
+# 
+# -r rows ... ROWS is the height of the spectrum. Values are integers 
+# greater than 0. The default is 100.
+# 
+# -l ... Indicates to print a list of colors to the terminal.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+columns=255
+rows=50
+list="no"
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 7 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-c)    # get columns=number of colors
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLUMNS SPECIFICATION ---"
+					   checkMinus "$1"
+					   columns=`expr "$1" : '\([0-9]*\)'`
+					   [ "$columns" = "" ] && errMsg "--- COLUMNS=$columns MUST BE A POSITIVE INTEGER ---"
+					   columnstestA=`echo "$columns < 1" | bc`
+					   columnstestB=`echo "$columns > 255" | bc`
+					   [ $columnstestA -eq 1 -o $columnstestB -eq 1 ] && errMsg "--- COLUMNS=$columns MUST BE AN INTEGER BETWEEN 1 AND 255 ---"
+					   ;;
+				-r)    # get rows
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ROWS SPECIFICATION ---"
+					   checkMinus "$1"
+					   rows=`expr "$1" : '\([0-9]*\)'`
+					   [ "$rows" = "" ] && errMsg "--- ROWS=$rows MUST BE A POSITIVE INTEGER ---"
+					   rowstestA=`echo "$rows < 1" | bc`
+					   [ $rowstestA -eq 1 ] && errMsg "--- ROWS=$rows MUST BE AN INTEGER GREATER THAN 0 ---"
+					   ;;
+				-l)    # get label
+					   list="on"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+				*)     # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+tmpA="$dir/colorspectrum_$$.mpc"
+tmpB="$dir/colorspectrum_$$.cache"
+tmp0="$dir/colorspectrum_0_$$.miff"
+trap "rm -f $tmpA $tmpB $tmp0; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0; exit 1" 1 2 3 15
+
+if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
+	then
+	: 'do nothing'
+	else
+		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+fi
+
+# get quantum max value
+qmax=`convert xc: -format "%[fx:QuantumRange]" info:`
+qval=`convert xc: -format "%q" info:`
+
+# 1st sed command removes spaces
+# 2nd sed command strips everything but color values
+# 3rd sed command replaces commas with spaces
+# 4th sed command prints all lines but first
+# when echo "$spectrum" it prints each row
+# when echo $spectrum it prints each line feed as a space so it is all one line.
+
+# get unique spectrum colors from rgb image as lines of text
+spectrum1=`convert $tmpA +matte -depth $qval +dither -colors $columns -unique-colors txt:- | \
+	sed -n 's/ //g; s/[0-9]*,[0-9]*:(\([0-9]*,[0-9]*,[0-9]*\).*/\1/; s/,/ /g; 2,$p'`
+	
+# convert rgb text spectrum to HSL single row image
+# Use NetPBM (PPM plain color format implied intermediate image)
+echo "P3 $columns 1 $qmax\n $spectrum1" | convert - -colorspace HSL $tmp0
+
+# convert HSL single row colors image back to text and sort according to hue
+spectrum2=`convert $tmp0 txt:- | \
+	sed -n 's/ //g; s/[0-9]*,[0-9]*:(\([0-9]*,[0-9]*,[0-9]*\).*/\1/; s/,/ /g; 2,$p' | \
+	sort -n -k 1,1`
+
+# convert sorted HSL text colors to single row HSL image
+echo "P3 $columns 1 $qmax\n $spectrum2" | convert - $tmp0
+
+# convert HSL colors single row image to RGB single row spectrum image
+convert $tmp0 -colorspace HSL \
+	\( $tmp0 -channel Red -separate \) -compose CopyRed -composite \
+	\( $tmp0 -channel Green -separate \) -compose CopyGreen -composite \
+	\( $tmp0 -channel Blue -separate \) -compose CopyBlue -composite \
+	-colorspace RGB $tmp0
+
+if [ "$list" = "on" ]
+	then
+	
+	spectrum3=`convert $tmp0 txt:- | \
+		sed -n 's/ //g; s/[0-9]*,[0-9]*:(\([0-9]*,[0-9]*,[0-9]*\).*/\1/; s/,/ /g; 2,$p'`	
+	echo ""
+	echo "List Of Colors - RGB Values 0 to Quantum Max"
+	echo ""
+	echo "$spectrum3"
+	echo ""
+fi
+
+# scale to desired height
+convert $tmp0 -scale ${columns}x${rows}! $outfile
+
+exit 0
+

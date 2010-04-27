@@ -1,0 +1,390 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 10/29/2008 .......... revised 10/29/2008
+#
+# USAGE: kmeansthresh [-g graph] infile outfile
+# USAGE: kmeansthresh [-help]
+#
+# OPTIONS:
+#
+# -g	  graph             graph specifies whether to generate a 
+#                           histogram graph image displaying the 
+#                           location and value of the threshold;
+#                           choices are: view or save; 
+#                           default is no graph
+#
+###
+#
+# NAME: KMEANSTHRESH
+# 
+# PURPOSE: To automatically thresholds an image to binary (b/w) format 
+# using the k-means technique.
+# 
+# DESCRIPTION: KMEANSTHRESH automatically thresholds an image to binary
+# (b/w) format. It assume the histogram is bimodal, i.e. is the composite
+# of two bell-shaped distributions representing the foreground and
+# background classes. The k-means appoach iteratively thresholds the
+# image, computes the means of the foreground (above threshold data) and
+# background (at and below threshold value), computes a new threshold
+# equal to the average of these two means and repeats until there is no
+# change in threshold between successive iterations. This script is 
+# equivalent to the isodatathresh script, which is implemented using image 
+# masking rather than from the histogram of the image. The isodatathresh 
+# script is faster than the kmeansthresh script for smaller images. The 
+# timing transition occurs for images somewhere between 1000-2000 pixels 
+# on a side. The kmeansthresh script is moderatly insensitive to image 
+# size, but pays an initial timing penalty in order to compute the 
+# histogram related data and get the means for each class from the 
+# histogram using shell computations.
+# 
+# OPTIONS: 
+# 
+# -g graph ... GRAPH specifies whether to generate a graph (image) of 
+# the histogram, displaying the location and value of the threshold. 
+# The choices are: view, save and none. If graph=view is selected, the 
+# graph will be created and displayed automatically, but not saved. 
+# If graph=save is selected, then the graph will be created and saved 
+# to a file using the infile name, with "_histog_kmeans.gif" appended,  
+# but the graph will not be displayed automatically. If -g option is 
+# not specified, then no graph will be created.
+# 
+# NOTE: It is highly recommended that the output not be specified 
+# as a JPG image as that will cause compression and potentially a 
+# non-binary (i.e. a graylevel) result. GIF is the recommended 
+# output format.
+# 
+# REFERENCES: see the following:
+# http://www.ph.tn.tudelft.nl/Courses/FIP/noframes/fip-Segmenta.html
+# http://homepages.inf.ed.ac.uk/rbf/CVonline/LOCAL_COPIES/MORSE/threshold.pdf
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+graph=""		#none, save or view
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 4 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-g)    # get  graph
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GRAPH SPECIFICATION ---"
+					   checkMinus "$1"
+					   graph="$1"
+					   [ "$graph" != "view" -a "$graph" != "save" ] && errMsg "--- GRAPH=$graph MUST BE EITHER VIEW OR SAVE ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# get outname from infile to use for graph
+inname=`convert $infile -format "%t" info:`
+histfile=${inname}_histog_kmeans.gif
+
+tmpA1="$dir/kmeansthresh_1_$$.mpc"
+tmpA2="$dir/kmeansthresh_1_$$.cache"
+trap "rm -f $tmpA1 $tmpA2; exit 0" 0
+trap "rm -f $tmpA1 $tmpA2; exit 1" 1 2 3 15
+
+if convert -quiet -regard-warnings "$infile" -colorspace Gray +repage "$tmpA1"
+	then
+	: ' do nothing '
+else
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAG ZERO SIZE ---"
+fi	
+
+# get totpix in image
+width=`convert $tmpA1 -format "%w" info:`
+height=`convert $tmpA1 -format "%h" info:`
+totpix=`echo "scale=0; $width * $height / 1" | bc`
+
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
+# get min and max in range 0 - 255 to correspond to 8-bit histogram
+getMinMax256()
+	{
+	img="$1"
+	if [ "$im_version" -ge "06030901" ]
+		then 
+		min=`convert $img -format "%[min]" info:`
+		max=`convert $img -format "%[max]" info:`
+		min=`convert xc: -format "%[fx:255*$min/quantumrange]" info:`
+		max=`convert xc: -format "%[fx:255*$max/quantumrange]" info:`
+	else
+		data=`convert $img -verbose info:`
+		min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		min=`convert xc: -format "%[fx:255*$min)]" info:`
+		max=`convert xc: -format "%[fx:255*$max)]" info:`
+	fi
+	}
+
+# function to convert IM histogram into two arrays, value and count
+getHistog()
+	{
+	echo "Generate Histogram"
+	img="$1"
+	# get lists of values and counts from histogram
+	# note that IM histograms are not well sorted (and have multiple bins with counts for the same values)
+	value=`convert $img -format %c -depth 8 histogram:info: | sort -k 2 -b | sed -n 's/^ *[0-9]*: [(]\([0-9 ]*\).*$/\1/ p'`
+	count=`convert $img -format %c -depth 8 histogram:info: | sort -k 2 -b | sed -n 's/^ *\([0-9]*\): [(].*$/\1/ p'`
+	
+	# put value and count into arrays
+	valueArr=($value)
+	countArr=($count)
+	
+	# check if both arrays are the same size
+	if [ ${#valueArr[*]} -ne ${#countArr[*]} ]
+		then
+			errMsg "--- ARRAY SIZES DO NOT MATCH ---"
+			exit 1
+		else
+		numbins=${#valueArr[*]}
+#echo "numbins=$numbins"
+	fi
+}
+
+
+# function to fill gaps and normalize histog
+getFilledNormlizedHistog()
+	{
+	echo "Fill & Normalize Histogram"
+	# fill in gaps in histogram and normalize counts by total pixels
+	# fill in bins with zero counts
+	i=0
+	while [ $i -lt 256 ]; do
+		if [ $numbins -lt 256 ]; then
+			nvalueArr[$i]=$i
+			ncountArr[$i]=0
+		else
+			nvalueArr[$i]=${valueArr[$i]}
+		fi
+		i=`expr $i + 1`
+	done
+
+	# normalize array
+	j=0
+	while [ $j -lt $numbins ]; do
+		k=${valueArr[$j]}
+		ncountArr[$k]=`echo "scale=10; ${countArr[$j]}/$totpix" | bc`
+		j=`expr $j + 1`
+	done
+
+	# reset numbins
+	orignumbins=$numbins
+	numbins=256
+	}
+
+
+# process image using k-means approach
+
+echo ""
+getMinMax256 "$tmpA1"
+getHistog "$tmpA1"
+getFilledNormlizedHistog
+
+echo "Generate Cumulative Arrays"
+# p=c(i)/N (normalized count or probability, p, at bin i)
+# v=v(i) (graylevel at bin i)
+# note that as histogram has been filled that v=i
+# t=threshold bin
+# n=p0=sum(c(i)/N)=zeroth histogram moment => cumulative normalized count (from i=0 to t) = N(t)
+# g=p1=sum(c(i)*v(i))=first histogram momement => cumulative normalized graylevel (from i=0 to t) = G(t)
+# m=p1/p0=mean
+
+i=0
+nlow=0
+nhigh=0
+glow=0
+ghigh=0
+while [ $i -lt $numbins ]; do
+	# get low arrays accumulating upwards from first bin (0)
+	# array index i starts with zero at first bin of histogram
+	# increment from left to right
+	test1=`echo "${ncountArr[$i]} != 0" | bc`
+	if [ $test1 -eq 1 ]; then
+		nlow=`echo "scale=10; $nlow + ${ncountArr[$i]}" | bc`
+		nlowArr[$i]=$nlow
+		glow=`echo "scale=10; $glow + ${nvalueArr[$i]}*${ncountArr[$i]}" | bc`
+		mlowArr[$i]=`echo "scale=10; $glow/$nlow" | bc`
+	else
+		if [ $i -eq 0 ]; then
+			nlowArr[$i]=0
+			mlowArr[$i]=0
+		else
+			k=`expr $i - 1`
+			nlowArr[$i]=${nlowArr[$k]}
+			mlowArr[$i]=${mlowArr[$k]}
+		fi
+	fi
+	
+	# get high arrays accumulating downwards from last bin (256)
+	# array index i starts with zero at last bin of histogram
+	# increment from right to left
+	j=`expr $numbins - 1 - $i`
+	test2=`echo "${ncountArr[$j]} != 0" | bc`
+	if [ $test2 -eq 1 ]; then
+		nhigh=`echo "scale=10; $nhigh + ${ncountArr[$j]}" | bc`
+		nhighArr[$i]=$nhigh		
+		ghigh=`echo "scale=10; $ghigh + ${nvalueArr[$j]}*${ncountArr[$j]}" | bc`
+		mhighArr[$i]=`echo "scale=10; $ghigh/$nhigh" | bc`
+	else
+		if [ $i -eq 0 ]; then
+			nhighArr[$i]=0
+			mhighArr[$i]=0
+		else
+			k=`expr $i - 1`
+			nhighArr[$i]=${nhighArr[$k]}
+			mhighArr[$i]=${mhighArr[$k]}
+		fi
+	fi
+#echo "i=$i; j=$j; ncount=${ncountArr[$i]}; nlow=${nlowArr[$i]}; nhigh=${nhighArr[$i]}; mlow=${mlowArr[$i]}; mhigh=${mhighArr[$i]}"
+	i=`expr $i + 1`
+done
+
+
+echo "Compute Threshold"
+# iterate the following
+# start with initial threshold at average of image min and max values
+# get low and high means corresponding to below and above threshold
+# compute new threshold=(Ml+Mh)/2
+# repeat until difference between old and new thresholds is zero
+
+startbin=0
+lastbin=`expr $numbins - 1`
+thresh=`echo "scale=0; ($min + $max)/2" | bc`
+oldthresh=0
+diff=`echo "scale=10; ($thresh - $oldthresh)" | bc`
+diff=`echo "scale=10; sqrt($diff * $diff)" | bc`
+test=`echo "$diff == 0" | bc`
+while [ $test != 1 ]; do
+	i=$thresh
+	j=`expr $lastbin - $i - 1`
+	oldthresh=$thresh
+	mlow=${mlowArr[$i]}
+	mhigh=${mhighArr[$j]}
+	thresh=`echo "scale=0; ($mlow+$mhigh)/2" | bc`
+	diff=`echo "scale=10; ($thresh - $oldthresh)" | bc`
+	diff=`echo "scale=10; sqrt($diff * $diff)" | bc`
+	test=`echo "$diff == 0" | bc`
+#echo "mlow=$mlow; mhigh=$mhigh; thresh=$thresh; diff=$diff; test=$test"
+done
+
+
+# compute threshold graph x coord and threshold in percent
+xx=$thresh
+threshpct=`convert xc: -format "%[fx:100*$thresh/255]" info:`
+#echo "xx=$xx; threshpct=$threshpct"
+
+
+echo "Thresholding Image At $threshpct%"
+convert $tmpA1 -threshold $threshpct% $outfile
+echo ""
+
+
+if [ "$graph" != "" ]; then
+	convert $tmpA1 histogram:- | \
+		convert - -negate \
+		-stroke red -strokewidth 1 -draw "line $xx,0 $xx,200" \
+		-background gray -splice 0x30 \
+		-fill white -stroke white -strokewidth 1 \
+		-font ArialB -pointsize 24 \
+		-draw "text 4,22 'threshold=$threshpct%'" -resize 50% \
+		-bordercolor gray50 -border 5 \
+		$histfile
+	trap "rm -f $histfile; exit 1" 1 2 3 15
+fi
+
+if [ "$graph" = "view" ]; then
+	convert $histfile x:
+	trap "rm -f $histfile; exit 0" 0
+	trap "rm -f $histfile; exit 1" 1 2 3 15
+fi
+
+exit 0
+
+
+

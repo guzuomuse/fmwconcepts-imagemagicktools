@@ -1,0 +1,292 @@
+2colorthresh --- Automatically thresholds an image to binary (b/w) format using an adaptive spatial subdivision color reduction technique.
+
+3Dbox --- Generates a perspective view of a 3D box at any orientation with pictures pasted on each of its sides
+
+3Dreflection --- Adds a fading reflection below an image and views it in perspective.
+
+3Drotate --- Applies a perspective distortion to an image by providing three rotation angles, zoom, offsets, background color, perspective exaggeration and auto zoom/centering
+
+3Dtext --- Converts text into an image with a 3D extrusion effect.
+
+adjoin --- Appends multiple images together with positional justification.
+
+anglegradient --- Creates a gradient effect at a specific orientation angle.
+
+aspect --- Resizes an image to a specific size allowing either cropping or padding to deal with the aspect ratio change.
+
+aspectpad --- Pads an image with a color to a specified aspect ratio and orientation.
+
+autocaption --- Places text automatically in a specified square size region that has the least color variation.
+
+autocolor --- Automatically color balances an image.
+
+autogamma --- Modifies an image to automatically apply a gamma correction.
+
+autolabel --- Places text automatically in a specified size region that best matches a reference color.
+
+autolevel --- Modifies an image to automatically stretch the dynamic range between full black and white and automatically apply a gamma correction.
+
+autotrim --- Automatically trims the background border around a normally oriented or rotated image.
+
+autowhite --- Automatically adjusts the white balance of an image.
+
+bcimage --- Changes the brightness, contrast and/or saturation of an image.
+
+bcmatch --- Modifies one image to try to match its brightness, contrast and optionally saturation to that of another image.
+
+bilinearwarp --- Generates a proper four-point bilinear warp of the input image.
+
+binomial --- Generates high pass or low pass filtered images based upon convolution kernels whose weights are derived from the binomial coefficients
+
+binomialedge --- Sharpens (or blurs) an image near edges using a Binomial shaped filter.
+
+bordereffects --- Creates various dispersion-like effects in the border of an image.
+
+bordergrid --- Creates various grid effects in the border of an image.
+
+bubblewarp --- Applies or reverses a warp of an image onto a bubble.
+
+bump --- Applies a hemispherical-like bump distortion to an image.
+
+bumptext --- Applies a raised text effect onto an image.
+
+camerablur --- Blurs an image in the frequency domain using an ideal blurring filter for either motion blur or lens defocus.
+
+cameradeblur --- Deblurs an image in the frequency domain using an ideal deblurring filter for either motion blur or lens defocus.
+
+captcha --- Creates a six-alphanumeric-character image for use as a challenge response test.
+
+cartoon --- Creates a cartoon-like appearance to an image.
+
+cepstrum --- Creates the cepstrum to depict the type, amount and orientation of camera type blurring in an image.
+
+chrome --- Applies a chrome effect to a binary image.
+
+clip --- Stretches the channels of an image to full black and white according to a clip amount on each end of the histogram.
+
+colorconverter --- To convert any valid ImageMagick color specification to the other ImageMagick color representations.
+
+colorspectrum --- Generates a spectrum-like image from the colors in an image.
+
+colortemp --- Transforms an image's overall color balance according to a desired color temperature change.
+
+curves --- Generate a smoothly interpolated, curved mapping look up table from a set of break points and applies it to an image.
+
+cylinderize --- Applies a cylinder distortion to an image so that the image is wrapped about the cylinder.
+
+defisheye --- Corrects for fisheye distortion in an image.
+
+denoise --- Reduces the noise in an image.
+
+derivative --- Applies a first directional derivative filter to an image.
+
+disperse --- Applies a dispersion effect to an image.
+
+dog --- Create an edge extracted image using the difference of two Gaussian blurs.
+
+downsize --- Downsizes (reduces) an image to a specified file size.
+
+emboss --- Applies an emboss effect to an image.
+
+exposure --- Changes the exposure level of an image.
+
+feather --- Feathers (smoothes) the white-to-black transition in a binary mask image.
+
+fftconvol --- Performs convolution on an image in the frequency domain.
+
+fftdeconvol --- Performs deconvolution on an image in the frequency domain.
+
+fftfilter --- Performs filtering on an image in the frequency domain.
+
+fisheye --- Applies a fisheye distortion to an image.
+
+fisheye2pano --- Generates a strip panoramic image from a linear type fisheye image with optional vertical perspective correction.
+
+fisheye2rect --- Generates a perspective (rectilinear) image from a region of a vertically viewed fisheye image.
+
+flicker --- Displays and optionally save an animation of the input images.
+
+flickerchannel --- Displays and optionally save an animation of the channels in an image.
+
+frosted --- Applies a frosted glass effect to an image.
+
+fuzzythresh --- Automatically thresholds an image to binary (b/w) format using the fuzzy c-means technique.
+
+fxtransitions --- Creates an animated transition between two images using a special effect distortion.
+
+gaussian --- Generates high pass or low pass filtered images based upon a Gaussian shaped convolution.
+
+gaussianedge --- Sharpens (or blurs) an image near edges using a Gaussian shaped filter.
+
+glasseffects --- Modifies an image so that it appears to be viewed through textured and/or tiled glass.
+
+glow --- Creates a glowing effect in an image.
+
+gradient --- Applies a gradient filter to an image.
+
+grid --- Superimposes a set of horizontal and/or vertical grid lines on an image.
+
+halo --- Applies a circular halo to an image.
+
+histmatch --- Modifies one image to try to match its histogram and optionally saturation to that of another image.
+
+histog --- Generates an output image which is composed of the histograms from each channel of the input image.
+
+imageborder --- Appends an image border by extending the outer regions of the image.
+
+innercrop --- Crops an image to a rectangle that will just trim any irregularly shaped outer boundary color.
+
+interleave --- Interleaves the channels of a single image or each image of a set of multiple images.
+
+isodatathresh --- Automatically thresholds an image to binary (b/w) format using the isodata technique.
+
+isonoise --- Reduces isolated noise in an image.
+
+kaleidoscope --- Applies a kaleidoscope effect to an image.
+
+kapurthresh --- Automatically thresholds an image to binary (b/w) format using Kapur's entropy technique.
+
+kmeansthresh --- Automatically thresholds an image to binary (b/w) format using the k-means technique.
+
+laplacian --- Applies a laplacian filter to an image.
+
+lenswarp --- simulates the effect of looking at a picture through a one side curved and one side flat lens sitting with the flat side against the picture.
+
+levelcolors --- Applies a color level transformation to an image channel-by-channel.
+
+localthresh --- Automatically thresholds an image to binary (b/w) format using a moving window adaptive thresholding approach.
+
+lupe --- Applies a magnifying glass effect in a local area of an image.
+
+magicwand --- Isolates a contiguous region of an image based upon a color determined from a user specified image coordinate.
+
+mapcolors --- Maps or translates one set of colors in an image to another set of colors.
+
+melt --- Creates a melting-like blur effect in an image.
+
+mirrorize --- Creates a mirror effect in an image.
+
+morphology --- Performs binary or grayscale morphologic operations on an image, including dilate, erode, open and close.
+
+mottle --- Applies various mottle effects to an image.
+
+multicrop --- Crops and unrotates multiple images from a scanned image.
+
+nearestcolor --- Finds the nearest color value in an image to a reference color.
+
+normcrosscorr --- Computes the normalized cross correlation surface to find where a small image best matches within a larger image.
+
+notch --- Creates and applies a notch filter to an image in the frequency domain to remove dither patterns and other regular noise patterns.
+
+omnistretch --- Enhances the dynamic range of brightness values and optionally saturation values in an image
+
+otsuthresh --- Automatically thresholds an image to binary (b/w) format using Otsu's between class variance technique.
+
+pano2rect --- Applies vertical perspective correction to an angular panoramic image.
+
+perlin --- Creates an image composed of Perlin type noise.
+
+picframe --- Adds a picture frame around an image.
+
+pinbarrel --- Applies or corrects pincushion and/or barrel lens distortion to an image.
+
+pixelize --- Creates a pixelized or blocky effect in an image.
+
+plm --- Generates a piece-wise linear mapping grayscale look up table and applies it to an image.
+
+plmlut --- Generates a piece-wise linear mapping grayscale look up table.
+
+polar --- Applies either a rectangular (cartesian) to polar transformation or a polar to rectangular (cartesian) transformation on an image.
+
+profile --- Generates a profile of an image row or column.
+
+pseudocolor --- Generates a pseudocolored image or pseudocolored animation from grayscale image using a rainbow colored transformation.
+
+recursion --- Creates a recursive affine composite effect in an image.
+
+redist --- Modifies an image so that its (grayscale) histogram has a either Gaussian, distribution or a Uniform Distribution.
+
+retinex --- Enhances detail and color in an image using the multiscale retinex algorithm.
+
+ripples --- Applies various circular ripple effects to an image.
+
+rotate3D --- Applies a perspective distortion to an image by providing three rotation angles and an optional perspective exaggeration.
+
+sahoothresh --- Automatically thresholds an image to binary (b/w) format using Sahoo's entropy technique.
+
+saturation --- Changes the color saturation in an image.
+
+scatter --- Generates a channel-by-channel scatter diagram between two images.
+
+scatterchannels --- Generates a scatter diagram between channels of an image.
+
+screeneffects --- Applies screen-like effects to an image.
+
+separate --- Identifies each separate white shape in a binary image.
+
+shapemorph --- Create a shape morphing animation sequence between two images.
+
+sharp --- Adaptively sharpens an image or extract edges.
+
+sharpedge --- Adaptively sharpens (or blurs) an image near edges.
+
+similar --- Computes the normalized cross correlation similarity metric between two equal dimensioned images.
+
+skew --- Applies a skew distortion to an image.
+
+slice --- Thresholds an image (inclusively) between a range of graylevels and optionally colorizes inside and/or outside the threshold range.
+
+space --- Applies a spatially adaptive contrast (and brightness) enhancement filter to an image.
+
+spectrum --- Computes the spectrum image from the magnitude of the Fourier Transform of an image.
+
+sphere --- Creates a colored sphere with a combination of diffuse and specular illumination.
+
+spherize ---  Warps an image onto a (hemi-)sphere.
+
+spline --- Draws a spline curve on an image based upon supplied points.
+
+splitimage --- Generates a side-by-side append of two partial images with an option to animate the amount of each image used in the append.
+
+squareup --- Resizes an image and squares it up either by padding or cropping.
+
+starburst --- Applies a starburst pattern to an image.
+
+statsfilt --- Computes various localized (neighborhood) statistical filters on an image.
+
+stdimage --- Computes a pixel-by-pixel standard deviation or variance image from multiple input images.
+
+stretch --- Modifies an image to automatically stretch the dynamic range between full black and white.
+
+striations --- Applies radial or circular striations to image.
+
+stutter --- Creates a 'stuttered' offset-like effect in an image.
+
+textcleaner --- Processes a scanned document of text to clean the text background.
+
+texteffect --- Convert text to an image after applying various effects, styling and color.
+
+tintilize --- Applies a color tint to the mid-range of a grayscale image.
+
+transitions --- Applies an animated transition between two images.
+
+trianglethresh --- Automatically thresholds an image to binary (b/w) format using the triangle technique.
+
+tricolorize --- Smoothly colorizes a grayscale image with either one, two or three different colors.
+
+trimmer --- Trims the background from any number of specified sides of an image.
+
+tunnelize --- Creates a tunnel-like effect on an image.
+
+unrotate --- Automatically unrotates a rotated image and trims the surrounding border.
+
+uwcorrect --- Corrects the color balance for red light attenuation in pictures taken underwater.
+
+variableblur --- Applies a variable blur to an image based upon a mask image.
+
+whitebalance --- Transform an image's overall color balance according to a desired change in a specified white point color.
+
+whiteboard --- Processes a picture of a whiteboard to clean up the background and correct the perspective.
+
+zoomblur --- Applies a radial or zoom blur to an image.
+

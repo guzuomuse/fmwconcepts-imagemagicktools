@@ -1,0 +1,214 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 3/24/2009 .......... revised 3/24/2009
+#
+# USAGE: stdimage [-m mode] [-c] infile1 ... infileN outfile
+# USAGE: stdimage [-h or -help]
+#
+# OPTIONS:
+#
+# -m      mode           output statistic; mode=s or std (for standard deviation) 
+#                        or mode=v or var (for variance)
+# -c                     apply contrast stretch to output
+# 
+# Note: all images must be the same size
+###
+#
+# NAME: STDIMAGE
+# 
+# PURPOSE: To compute a pixel-by-pixel standard deviation or variance image 
+# from multiple input images.
+# 
+# DESCRIPTION: STDIMAGE computes a pixel-by-pixel standard deviation or variance 
+# image from multiple input images.
+# 
+# 
+# OPTIONS: 
+# 
+#
+# -m mode ... MODE statistical measure generated in the output image. Choices 
+# are either mode=s or std (for standard deviation) or mode=v or var 
+# (for variance). The default=std.
+# 
+# -c ... Apply contrast stretch to output.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+mode="std"	# mode: s or std (standard deviation) or v  or var (variance)
+cs="no"     # constrast stretch output
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -lt 3 ]
+	then
+	errMsg "--- TOO FEW ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+		 		-m)    # mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   # test mode values
+					   mode="$1"
+					   #convert mode to lowercase
+					   mode=`echo "$mode" | tr "[:upper:]" "[:lower:]"`
+					   case "$mode" in 
+					   		s|std) mode=std ;;
+					   		v|var) mode=var ;;
+					   		*) errMsg "--- MODE=$mode IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+		 		-c)    # contrast stretch
+					   cs="yes"
+					   ;;
+ 				 -)    # STDIN, end of arguments
+  				 	   break
+  				 	   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;					   
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+fi
+
+
+# get infiles and outfile
+fileArray=($@)
+nfiles=$#
+[ $nfiles -lt 3 ] && errMsg "--- TOO FEW IMAGES WERE PROVIDED ---"
+lastfile=`expr $nfiles - 1`
+outfile="${fileArray[$lastfile]}"
+
+# test that each infile is valid and put names into list
+i=0
+infilelist=""
+while [ $i -lt $lastfile ]; do
+	# test if image an ordinary, readable and non-zero size
+	testfile="${fileArray[$i]}"
+	if [ -f $testfile -a -r $testfile -a -s $testfile ]
+		then
+		infilelist="$infilelist $testfile"
+		else
+			errMsg "--- FILE $testfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+			exit 1
+	fi
+	i=`expr $i + 1`
+done
+
+# remove leading space
+infilelist=${infilelist# }
+
+
+# test that infilelist provided
+[ "$infilelist" = "" ] && errMsg "NO INPUT FILES SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# set up temp files
+tmp0="$dir/stdimage_0_$$.miff"
+trap "rm -f $tmp0; exit 0" 0
+trap "rm -f $tmp0; exit 1" 1 2 3 15
+
+
+# Process images
+
+# get size of first image
+ww=`convert "${fileArray[0]}" -ping -format "%w" info:`
+hh=`convert "${fileArray[0]}" -ping -format "%h" info:`
+
+# set up contrast stretch
+if [ "$cs" = "no" ]; then
+	stretch=""
+else
+	stretch="-contrast-stretch 0"
+fi
+
+# set up empty first frame of temporary
+convert -size ${ww}x${hh} xc: $tmp0
+
+# add all other images to multi-frame miff
+for img in $infilelist; do
+	convert $tmp0 $img $tmp0
+done
+
+# compute variance result
+# note -gamma 0.5 is same as -evaluate pow 2 and is same as square
+# var=ave(frames^2) - (ave(frames))^2
+# use -coalesce to separate frames and then delete intial bogus frame
+convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -average \) \
+	\( $tmp0 -coalesce -delete 0 -average -gamma 0.5 \) \
+	+swap -compose minus -composite $tmp0
+
+if [ "$mode" = "var" ]; then
+	convert $tmp0 $stretch $outfile
+elif [ "$mode" = "std" ]; then
+# note -gamma 2 is same as -evaluate pow 0.5 and is same as square root
+	convert $tmp0 -gamma 2 $stretch $outfile
+fi
+
+exit 0

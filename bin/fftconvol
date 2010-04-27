@@ -1,0 +1,225 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 8/17/2009 .......... revised 8/18/2009
+#
+# USAGE: fftconvol infile filtfile outfile
+# USAGE: fftconvol [-h or -help]
+#
+# OPTIONS:
+#
+# No options are required.
+# 
+###
+#
+# NAME: FFTCONVOL 
+# 
+# PURPOSE: To perform convolution on an image in the frequency domain.
+# 
+# DESCRIPTION: FFTCONVOL performs convolution on an image in the frequency
+# domain using a filter image. Two inputs are required. The image and a
+# grayscale spatial domain convolution filter. Both the image and the grayscale
+# spatial domain filter are transformed to the frequency domain using +fft.
+# Then the Fourier transform of the filter is multiplied with the fft of the 
+# image and the product is then returned to the spatial domain using +ift. 
+# Any alpha channel on the filter will be removed automatically before 
+# processing. If the image has an alpha channel it will not be processed, but 
+# simply copied from the input to the output. Currently useful only for low 
+# pass filtering, i.e. blurring.
+# 
+# OPTIONS: 
+# 
+# No options are required
+# 
+# The filter image must be appropriately centered and padded with black to 
+# the same size as the input image.
+# 
+# REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled 
+# in any quantum level of Q8, Q16 or Q32. Also requires the FFTW delegate 
+# library.
+# 
+# See http://www.fmwconcepts.com/imagemagick/fourier_transforms/fourier.html 
+# for more details about the Fourier Transform with ImageMagick.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 3 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile, filtfile and outfile
+	infile=$1
+	filtfile=$2
+	outfile=$3
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that filtfile provided
+[ "$filtfile" = "" ] && errMsg "NO FILTER FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# setup temporary images
+tmpA1="$dir/fftconvol_1_$$.mpc"
+tmpB1="$dir/fftconvol_1_$$.cache"
+tmpA2="$dir/fftconvol_2_$$.mpc"
+tmpB2="$dir/fftconvol_2_$$.cache"
+tmpA="$dir/fftconvol_A_$$.pfm"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA; exit 1" 1 2 3 15
+
+# read the input image and filter image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+convert -quiet -regard-warnings "$filtfile" -alpha off -colorspace gray +repage "$tmpA2" ||
+	errMsg "--- FILE $filtfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+
+# test for valid version of IM
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+[ "$im_version" -lt "06050407" ] && errMsg "--- REQUIRES IM VERSION 6.5.4-7 OR HIGHER ---"
+
+# test for hdri enabled
+hdri_on=`convert -list configure | grep "enable-hdri"`
+[ "$hdri_on" = "" ] && errMsg "--- REQUIRES HDRI ENABLED IN IM COMPILE ---"
+
+# get image dimensions for later cropping as inputs are padded to square, even dimensions
+width=`identify -ping -format "%w" $tmpA1`
+height=`identify -ping -format "%h" $tmpA1`
+
+# get center point adjusted for padding an odd dimension to even
+cx=`convert xc: -format "%[fx:floor(($width+1)/2)]" info:`
+cy=`convert xc: -format "%[fx:floor(($height+1)/2)]" info:`
+
+# compute linear scaling parameter for filter image from its grayscale mean, 
+# which will be the DC value in the FFT image and thus generally the largest value.
+if [ "$im_version" -ge "06050410" ]; then
+	#HDRI was auto scaled by quantumrange
+	gain=`convert $tmpA2 -format "%[fx:1/mean]" info:`
+else
+	#HDRI was unscaled by quantumrange
+	gain=`convert $tmpA2 -format "%[fx:quantumrange/mean]" info:`
+fi
+
+# test if image has alpha and set up copy to output
+is_alpha=`convert $tmpA1 -format "%A" info:`
+if [ "$is_alpha" = "True" ]; then
+	convert $tmpA1 -alpha extract $tmpA 
+	addalpha="$tmpA -compose copy_opacity -composite"
+else
+	addalpha=""
+fi
+
+: '
+For blurring, the real and imaginary products are computed by multiplication 
+of two complex numbers
+F=A+iB  filter fft
+P=C+iD  image fft
+FxP= (A+iB)x(C+iD) = (AxC-BxD) + i(BxC+AxD)
+'
+
+# transform the image to real and imaginary components,
+# perform complex multiplication between the 4 images
+# transform back
+#
+# first line rolls the filter, performs +fft, separates the frames and applies gain
+# second line performs +fft on image
+# third line performs AxC
+# fourth line performs BxD
+# fifth line performs AxC-BxD
+# sixth line performs BxC
+# seventh line performs AxD
+# eight line performs BxC+AxD
+# ninth line deletes intermediate images and 
+# does the +ift on the real and imaginary product components
+# tenth line crops the result in case the original dimensions were odd
+# note +fft produces a two-frame images, thus the two +ffts make 4 images
+convert \( $tmpA2 -roll -${cx}-${cy} +fft -evaluate multiply $gain \) \
+	\( $tmpA1 -alpha off +fft \) \
+	\( -clone 0 -clone 2 -compose multiply -composite \) \
+	\( -clone 1 -clone 3 -compose multiply -composite \) \
+	\( -clone 4 -clone 5 +swap -compose minus -composite \) \
+	\( -clone 1 -clone 2 -compose multiply -composite \) \
+	\( -clone 0 -clone 3 -compose multiply -composite \) \
+	\( -clone 7 -clone 8 -compose plus -composite \) \
+	-delete 0,1,2,3,4,5,7,8 +ift \
+	-crop ${width}x${height}+0+0 +repage $addalpha $outfile
+
+exit 0

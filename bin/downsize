@@ -1,0 +1,243 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 12/24/2009 .......... revised 12/24/2009
+#
+# USAGE: downsize [-s size] [-t toler] [-c copy] infile outfile
+# USAGE: downsize [-help]
+#
+# OPTIONS:
+#
+# -s      size	       	desired output file size in kilobytes; float>0; 
+#                       default=200
+# -t      toler         tolerance or allowed size of result greater than 
+#                       desired size expressed as percent of desired size; 
+#                       float>=0; default=1
+# -c      copy          copy to output when not downsizing if no image 
+#                       format change; yes (y) or no (n); default=yes
+#
+###
+#
+# NAME: DOWNSIZE 
+# 
+# PURPOSE: To downsize (reduce) an image to a specified file size.
+# 
+# DESCRIPTION: DOWNSIZE reduces an image's dimensions to achieve a specified 
+# file size. Typically the process results in a file size that is slightly 
+# larger than desired. So the process is iterated until some tolerance is 
+# achieved. From limited experience, the first pass will usually be within 
+# 10% of the desired size and the second pass will get to within 1%. If the 
+# input image is smaller than the desired filesize, then the user may choose 
+# to copy the input to the output or just skip processing the input image.
+# 
+# OPTIONS: 
+# 
+# -s size ... SIZE is the desired output image size in kilobytes. Values are 
+# floats>0. The default=200
+# 
+# -t toler ... TOLER is allowed size of the result greater than the desire 
+# size expressed as a percent of the desired size. Values are floats>=0. 
+# The default=1. Processing will iterate until the resulting image size 
+# is less than the desired size plus the tolerance. If the tolerance is 0, 
+# then iteration continues until the output size is actually less the desired 
+# size, but this may take many iterations and thus longer processing times. 
+# From limited experience, the first pass will usually be within 10% of the 
+# desired size and the second pass will usually be within 1%. 
+# 
+# -c copy ... COPY will copy the input to the output when the desired size is 
+# not less than the input size for input and output have the same file format; 
+# Values are either: yes (y) or no (n); default=yes
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+size=200		# desired output filesize in kilobytes
+toler=1			# tolerance as percent of size; toler>=0
+copy="yes"		# copy to output when not downsizing if no image format change
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 8 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-c)    # get copy
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COPY SPECIFICATION ---"
+					   checkMinus "$1"
+					   copy=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$copy" in 
+					   		yes|y) copy="yes";;
+					   		no|n) copy="no";;
+					   		*) errMsg "--- COPY=$copy IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-s)    # get size
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   size=`expr "$1" : '\([.0-9]*\)'`
+					   sizetest=`echo "$size <= 0" | bc`
+					   [ $sizetest -eq 1 ] && errMsg "--- SIZE=$size MUST BE A FLOAT GREATER THAN 0 ---"
+					   ;;
+				-t)    # get toler
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TOLER SPECIFICATION ---"
+					   checkMinus "$1"
+					   toler=`expr "$1" : '\([.0-9]*\)'`
+					   tolertest=`echo "$toler < 0" | bc`
+					   [ $tolertest -eq 1 ] && errMsg "--- TOLER=$toler MUST BE A NON-NEGATIVE FLOAT ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up temp file
+tmpA1="$dir/downsize_1_$$.mpc"
+tmpB1="$dir/downsize_1_$$.cache"
+
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" -strip +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+
+# get file type of input
+ftype=`convert $infile -ping -format "%m" info:`
+ftype2=`echo $ftype | tr "[:upper:]" "[:lower:]"`
+[ "$ftype" = "JPEG" ] && ftype="JPG"
+[ "$ftype2" = "jpeg" ] && ftype2="jpg"
+
+# get suffix of outfile
+outlist=`echo $outfile | tr "." " "`
+partsArray=($outlist)
+numparts=${#partsArray[*]}
+suffix=${partsArray[$numparts-1]}
+suffix=`echo $suffix | tr "[:lower:]" "[:upper:]"`
+[ "$suffix" = "JPEG" ] && suffix="JPG"
+[ "$suffix" = "TIFF" ] && suffix="TIF"
+
+# if ftype != suffix, set ftype to suffix
+[ "$ftype" != "$suffix" ] && changetype="yes" || changetype="no"
+[ "$ftype" != "$suffix" ] && ftype=$suffix
+
+# convert image to ftype and get filesize
+initsize=`convert $infile -ping -format "%b" info:`
+fullsize=`convert $tmpA1 ${ftype}:- | convert - -ping -format "%b" info:`
+size2=`convert xc: -format "%[fx:$size*1000]" info:`
+
+# process image if actual size > desired size
+if [ $fullsize -gt $size2 ]; then
+
+	# iterate
+	i=1
+	diffsize=0
+	iterate=1
+	while [ $iterate -eq 1 ]; do
+		# get sqrt size ratio in percent
+		size2=`convert xc: -format "%[fx:$size2-($diffsize*1000)]" info:`
+		pratio=`convert xc: -format "%[fx:100*sqrt($size2/$fullsize)]" info:`
+		
+		# resize image
+		convert $tmpA1 -resize ${pratio}% ${ftype}:$outfile
+		
+		newsize=`convert $outfile -ping -format "%b" info:`
+		newsize=`convert xc: -format "%[fx:$newsize/1000]" info:`
+		echo "i=$i; newsize=${newsize}kB"
+		diffsize=`convert xc: -format "%[fx:($newsize-$size)]" info:`
+		iterate=`convert xc: -format "%[fx:$diffsize>($toler*$size/100)?1:0]" info:`
+		i=$(($i+1))
+	done
+	
+elif [ "$changetype" = "yes" -o "$copy" = "yes" ]; then
+	convert $tmpA1 ${ftype}:$outfile
+fi
+
+exit

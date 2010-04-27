@@ -1,0 +1,331 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 2/25/2010 .......... 4/26/2010
+#
+# USAGE: separate [-m mode] [-t] [-v] [-l] [-b bgcolor] [-e exponent] infile outfile
+# USAGE: separate [-h or -help]
+#
+# OPTIONS:
+#
+# -m      mode           output mode: 1=index number; 2=stretch index number;
+#                        3=colored index number; 4=output image for each 
+#                        stretched index number; 5=output image for each 
+#                        binarized index number; 6=output image for each 
+#                        colored index number; default=3
+# -t                     trim to bounding box in method=4,5,6
+# -v                     keep virtual canvas when trimming
+# -l                     list image size and offset when trimming
+# -b      bgcolor        color for desired background in the output image(s);
+#                        choices are: black or none; default=black
+# -e      exponent       exponent used in non-linear log transformation to 
+#                        help shift colors away from black for mode=3 or 6;
+#                        integer>0; default=1
+#
+###
+#
+# NAME: SEPARATE 
+# 
+# PURPOSE: To identify each separate isolated white shape in a binary image.
+# 
+# DESCRIPTION: SEPARATE identifies each separate (isolated) white shape in 
+# a binary (white on black) image. Any two-tone image may be used. The image 
+# will be converted to binary black/white. Multiple output formats are 
+# available. The background for the output image(s) can be either black or 
+# transparent (none).
+# 
+# 
+# OPTIONS: 
+# 
+# -m mode ... MODE is the desired output format. It can one image or multiple 
+# images. Mode=1 simply sets the graylevel of each shape to an index from 1 
+# to the number of shapes. The max number of shades is 255. The background will
+# have index 0. For a small number of shapes, this will result in a visually 
+# black result. Mode=2 is the same as mode=1, except the resulting image is 
+# linearly stretched to full dynamic range so that the shapes has visible 
+# graylevels. Mode=3 is the same as mode=2, except the shapes are color coded.
+# Mode=4 is the same as mode=2, but one output image is created for each shape. 
+# Mode=5 is the same as mode=4, except the each output is binarized. Mode=6 is 
+# the same as mode=4, except each output is color coded. The default=3
+#
+# -t ... TRIM to bounding box for methods 4, 5 or 6
+# 
+# -v ... Keep virtual canvas information with trimmed outputs.
+# 
+# -l ... List image size and offset (WIDTHxHEIGHT+XOFF+YOFF) for trimmed outputs.
+# 
+# -b bgcolor ... BGCOLOR is the background color to be used in the output 
+# image(s). The choices are: black or none (i.e. transparency). The default 
+# is black.
+# 
+# -e exponent ... EXPONENT is used in a non-linear transformation of the 
+# graylevel values to map them to colors such that the colors are shifted 
+# away from black. Values are integers>0. The default=1. The more shapes/colors 
+# that are used, the larger the value. Typical value is about 6 for 
+# example, for 26 colors used.
+# 
+# REQUIREMENT: IM version 6.5.5-1 due to the use of auto-level and 6.5.0-9 
+# due to the use of compare with unequal sized images.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+mode=3				# 1 to 6
+trim="no"			# trim to bounding box for methods 4,5,6; yes or no
+vv="no"             # keep virtual canvas; yes or no
+list="no"           # list virtual canvas; yes or no
+bgcolor="black"		# black or none
+exp=1				# about 6 for 26 shapes seems to work
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 11 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-b)    # get bgcolor
+					   shift  # to get the next parameter - lineval
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   [ "$bgcolor" != "black" -a "$bgcolor" != "none" ] && errMsg "--- BGCOLOR=$bgcolor MUST BE EITHER BLACK OR NONE ---"
+					   ;;
+				-m)    # get mode
+					   shift  # to get the next parameter - lineval
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`expr "$1" : '\([0-9]\)'`
+					   [ "$mode" = "" ] && errMsg "--- MODE=$mode MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   [ $mode -lt 0 -o $mode -gt 6 ] && errMsg "--- MODE=$mode MUST BE AN INTEGER BETWEEN 1 AND 6 ---"
+					   ;;
+				-e)    # get exponent
+					   shift  # to get the next parameter - lineval
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID EXPONENT SPECIFICATION ---"
+					   checkMinus "$1"
+					   exp=`expr "$1" : '\([0-9]\)'`
+					   [ "$mode" = "" ] && errMsg "--- EXPONENT=$"$mode" MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   ;;
+				-t)    # set trim
+					   trim="yes"
+					   ;;
+				-v)    # set virtual canvas
+					   vc="yes"
+					   ;;
+				-l)    # list virtual canvas
+					   list="yes"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up temp file
+tmpA1="$dir/separate_1_$$.mpc"
+tmpB1="$dir/separate_1_$$.cache"
+tmpA2="$dir/separate_2_$$.mpc"
+tmpB2="$dir/separate_2_$$.cache"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 1" 1 2 3 15
+
+
+# read the input image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" -colorspace gray -auto-level +repage "$tmpA1" ||
+	errMsg "--- FILE $infile1 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# copy tmpA1 to tmpA2
+convert $tmpA1 $tmpA2
+
+#test if file is binary 
+uniquecolors=`convert $tmpA1 -format "%k" info:`
+[ $uniquecolors -ne 2 ] && echo "--- IMAGE IS NOT BINARY ---"
+
+# process image to get indices for each shape
+val=0
+graylvl=1
+while [ $val -eq 0 -a $graylvl -ne 256 ]; do
+	# find white pixel and get its coords
+	result=`compare -metric pae -dissimilarity-threshold 1 \
+		$tmpA1 -size 1x1 xc:white null: 2>&1`
+	val=`echo "$result" | cut -d\  -f 1`
+	coords=`echo "$result" | cut -d\  -f 4`
+#	echo "val=$val; coords=$coords"
+	[ $val -ne 0 ] && break
+
+	# floodfill $tmpA2 with graylevel index at coords
+	convert $tmpA2 -fill "gray(${graylvl})" -draw "color ${coords} floodfill" $tmpA2
+
+	# floodfill $tmpA1 with black at coords
+	convert $tmpA1 -fill "black" -draw "color ${coords} floodfill" $tmpA1
+	graylvl=$(($graylvl + 1))
+done
+numgrays=$graylvl
+
+# setup blackthreshold
+#blackthresh=`convert xc: -format "%[fx:ceil(100/($numgrays-1))]" info:`
+blackthresh=`convert xc: -format "%[fx:0.5*100/($numgrays-1)]" info:`
+
+# setup scaling
+scale=`convert xc: -format "%[fx:255/($numgrays-1)]" info:`
+
+# setup background for mode=4-6
+if [ "$bgcolor" = "none" ]; then
+	trans="-transparent black"
+else
+	trans=""
+fi
+
+# setup black-white for mode=5
+if [ $mode -eq 5 ]; then
+	bw="-auto-level"
+else
+	bw=""
+fi
+
+# get outname and suffix
+outname=`echo "$outfile" | sed -n 's/^\(.*\)[.][^.]*$/\1/p'`
+suffix=`echo "$outfile" | sed -n 's/^.*[.]\([^.]*\)$/\1/p'`
+
+# set up for trim and virtual canvas
+if [ $mode -gt 3 -a "$trim" = "yes" -a "$vc" = "yes" ]; then
+	trimming="-bordercolor $bgcolor -border 5 -trim"
+elif [ $mode -gt 3 -a "$trim" = "yes" -a "$vc" = "no" ]; then	
+	trimming="-bordercolor $bgcolor -border 5 -trim +repage"
+else
+	trimming=""
+fi
+
+# process output images
+# note for method 3 and 6, the lut does not stretch to pure black but to gray(11),
+# so add -level-colors "gray(11)",white to force it to pure black
+if [ $mode -eq 1 ]; then
+	convert $tmpA2 -type grayscale $outfile
+elif [ $mode -eq 2 ]; then
+	convert $tmpA2 -auto-level -type grayscale -black-threshold ${blackthresh}% $outfile
+elif [ $mode -eq 3 ]; then
+	convert \( $tmpA2 -auto-level -evaluate log $exp \) \
+	\( -size 1x1 xc:black xc:red xc:orange xc:yellow xc:green1 xc:cyan \
+	xc:blue xc:blueviolet +append -filter Cubic -resize 256x1! \
+	-level-colors "gray(11)",white \) \
+	-interpolate nearest-neighbor -clut -black-threshold ${blackthresh}% \
+	$outfile
+elif [ $mode -eq 4 -o $mode -eq 5 ]; then
+	for ((i=0; i<$numgrays; i++)); do
+		if [ $i -eq 0 ]; then
+			convert $tmpA2 -threshold 0 -negate $trans ${outname}-0.${suffix}
+		else
+			convert $tmpA2 -type grayscale -fill black +opaque "gray($i)" \
+			-evaluate multiply $scale \
+			-black-threshold ${blackthresh}% $trans $bw $trimming \
+			${outname}-$i.${suffix}
+		fi
+	done
+elif [ $mode -eq 6 ]; then
+	for ((i=0; i<$numgrays; i++)); do
+		if [ $i -eq 0 ]; then
+			convert $tmpA2 -threshold 0 -negate $trans \
+			${outname}-0.${suffix}
+		else
+			convert \( $tmpA2 -type grayscale -fill black +opaque "gray($i)" \
+			-evaluate multiply $scale -evaluate log $exp \) \
+			\( -size 1x1 xc:black xc:red xc:orange xc:yellow xc:green1 xc:cyan \
+			xc:blue xc:blueviolet +append -filter Cubic -resize 256x1! \
+			-level-colors "gray(11)",white \) \
+			-interpolate nearest-neighbor -clut  \
+			-black-threshold ${blackthresh}% $trans $trimming \
+			${outname}-$i.${suffix}
+		fi
+	done
+fi
+
+if [ $mode -gt 3 -a "$trim" = "yes" -a "$vc" = "yes" -a "$list" = "yes" ]; then
+	echo ""
+	for ((i=1; i<$numgrays; i++)); do
+		canvas=`convert ${outname}-$i.${suffix} -format "%wx%h%X%Y" info:`
+		echo "${outname}-$i.${suffix}: $canvas"
+	done
+	echo ""
+fi
+exit 0
