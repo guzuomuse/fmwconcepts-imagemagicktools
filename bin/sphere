@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/7/2010 .......... revised 3/7/2010
+# Developed by Fred Weinhaus 3/7/2010 .......... revised 5/6/2010
 #
-# USAGE: sphere [-d diameter] [-c color] [-b bgcolor] [-t theta] [-p phi] [-l lambertian] [-s specular] [-e exponent] outfile
+# USAGE: sphere [-d diameter] [-c color] [-b bgcolor] [-t theta] [-p phi] [-l lambertian] [-s specular] [-e exponent] [infile] outfile
 # USAGE: sphere [-h or -help]
 #
 # OPTIONS:
@@ -24,8 +24,12 @@
 #                            default=0.9
 # -s      specular           specular illumination amplitude; 0<=float<=1;
 #                            default=0.6
-# -e      exponent           specular lighting exponent; float>0
+# -e      exponent           specular illumination exponent; float>0; default=70
 #
+# If infile is provided, then it will be used in place of the color. The 
+# infile must be square and the diameter will obtained from the dimensions 
+# of the image.
+# 
 ###
 #
 # NAME: SPHERE 
@@ -70,6 +74,10 @@
 # of the reflective effect. Larger values means smaller areas. Values are 
 # floats>0. The default=70.
 # 
+# NOTE: If infile is provided, then it will be used in place of the color.
+# The infile must be square and the diameter will obtained from the dimensions 
+# of the image.
+# 
 # REQUIRMENTS: IM 6.5.4-3 or higher due to the use of -compose mathematics.
 # 
 # THEORY: See the following:
@@ -88,13 +96,14 @@
 # set default values
 diameter=128		# sphere diameter
 color="red"			# base color of sphere
-bgcolor="blue"		# background color outside sphere
+bgcolor="black"		# background color outside sphere
 theta=135			# lighting azimuth angle (cc from +x)
 phi=50				# lighting altitude angle (down from zenith)
 ampd=0.9			# diffuse (lambertian) amplitude
 amps=0.6			# specular amplitude
 exp=70				# specular exponent
 sscale=250			# scaling to make amps 250xsmaller so close to ampd
+infile=""
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -245,7 +254,14 @@ else
 	done
 	#
 	# get infile and outfile
-	outfile=$1
+	if [ $# -eq 2 ]; then
+		infile=$1
+		outfile=$2
+	elif [ $# -eq 1 ]; then
+		outfile=$1
+	else
+		errMsg "--- INCONSISTENT NUMBER OF INPUT AND OUTPUT IMAGES SPECIFIED ---"
+	fi
 fi
 
 # test that outfile provided
@@ -259,6 +275,16 @@ dir="$tmpdir/$PROGNAME.$$"
 mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
 trap "rm -rf $dir; exit 0" 0
 trap "rm -rf $dir; exit 1" 1 2 3 15
+
+
+if [ "$infile" != "" ]; then
+	convert -quiet -regard-warnings "$infile" +repage $dir/tmpI.mpc ||
+		errMsg "--- FILE $infile NOT READABLE OR HAS ZERO SIZE ---"
+	ww=`convert $dir/tmpI.mpc -ping -format "%w" info:`
+	hh=`convert $dir/tmpI.mpc -ping -format "%h" info:`
+	[ $ww -ne $hh ] && errMsg "--- INFILE MUST BE SQUARE ---"
+	diameter=$ww
+fi
 
 # Theory
 # lambertian shading
@@ -393,18 +419,31 @@ convert $dir/tmpz1.mpc -evaluate multiply $zh $dir/tmpzhz1.mpc
 
 
 # process sphere for color, diffuse and specular terms
-if [ "$amps" = "0" ]; then
-	convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $channelize \
-	-virtual-pixel background -background none -monitor -fx \
-	"$color+($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2]" \
-	$dir/tmpS.mpc
+if [ "$infile" = "" ]; then
+	if [ "$amps" = "0" ]; then
+		convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $channelize \
+		-virtual-pixel background -background none -monitor -fx \
+		"$color+($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2]" \
+		$dir/tmpS.mpc
+	else
+		convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $dir/tmpzhz1.mpc $channelize \
+		-virtual-pixel background -background none -monitor -fx \
+		"$color+(($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2])+$ssamps*(($xh2*u[0])+($yh2*u[1])-$xhpyh+u[3])^$exp" \
+		$dir/tmpS.mpc
+	fi
 else
-	convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $dir/tmpzhz1.mpc $channelize \
-	-virtual-pixel background -background none -monitor -fx \
-	"$color+(($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2])+$ssamps*(($xh2*u[0])+($yh2*u[1])-$xhpyh+u[3])^$exp" \
-	$dir/tmpS.mpc
+	if [ "$amps" = "0" ]; then
+		convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $dir/tmpI.mpc $channelize \
+		-virtual-pixel background -background none -monitor -fx $dir/tmpI.mpc \
+		"u[4]+($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2]" \
+		$dir/tmpS.mpc
+	else
+		convert $dir/tmpx1.mpc $dir/tmpy1.mpc $dir/tmpzlz1.mpc $dir/tmpzhz1.mpc $dir/tmpI.mpc $channelize \
+		-virtual-pixel background -background none -monitor -fx \
+		"u[4]+(($xl2*u[0])+($yl2*u[1])-$xlpyl+u[2])+$ssamps*(($xh2*u[0])+($yh2*u[1])-$xhpyh+u[3])^$exp" \
+		$dir/tmpS.mpc
+	fi
 fi
-
 # anti-alias the boundary of the sphere
 convert $dir/tmpS.mpc \( +clone -channel rgba -threshold 100% \
 -fill white -antialias -draw "circle $rad,$rad $diameter,$rad" \

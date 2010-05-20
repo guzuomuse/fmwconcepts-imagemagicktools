@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/7/2008 .......... revised 10/21/2008
+# Developed by Fred Weinhaus 10/7/2008 .......... revised 5/11/2010
 #
-# USAGE: autolevel [-c colormode] infile outfile
+# USAGE: autolevel [-c colormode] [-m midrange] infile outfile
 # USAGE: autolevel [-h or -help]
 #
 # OPTIONS:
@@ -11,6 +11,8 @@
 #                         min, max, gamma statistics; choices are: 
 #                         gray, intensity, luminance, lightness, brightness, 
 #                         average, magnitude, rgb; default=luminance
+# -m      midrange        midrange value for autogamma part of script;
+#                         0<float<1; default=0.5
 #
 ###
 #
@@ -46,11 +48,9 @@
 # Note: generally there are only slight differences between the various 
 # non-rgb colormode results. Colormode=rgb can cause color balance shifts.
 # 
-# Gamma = log(mean)/log(mid-dynamic-range)
-# 
-# Note: there is one internal parameter, midrange, that can be adjusted 
-# if you want to bias the gamma slightly. See the default values below.
-# You can also change the default colormode in the default values.
+# -m midrange ... MIDRANGE is the midrange value for the autogamma technique, 
+# which uses the formula: Gamma = log(mean)/log(mid-dynamic-range). Values 
+# are in the range 0<float<1. The default=0.5
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -110,7 +110,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 4 ]
+elif [ $# -gt 6 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -140,6 +140,17 @@ else
 					   		rgb) ;;
 					   		*) errMsg "--- COLORMODE=$colormode IS AN INVALID VALUE ---" 
 					   	esac
+					   ;;
+				-m)    # get midrange
+					   shift  # to get the next parameter - radius,sigma
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MIDRANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   midrange=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$midrange" = "" ] && errMsg "--- MIDRANGE=$midrange MUST BE A NON-NEGATIVE FLOAT ---"
+					   midrangetestA=`echo "$midrange <= 0" | bc`
+					   midrangetestB=`echo "$midrange >= 1" | bc`
+					   [ $midrangetestA -eq 1 -o $midrangetestB -eq 1 ] && errMsg "--- MIDRANGE=$midrange MUST BE AN FLOAT GREATER THAN 0 AND SMALLER THAN 1 ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -258,12 +269,15 @@ else
 	getChannelStats "$tmpR1"
 	echo "RED: min=$min%; max=$max%; gamma=$gammaval"
 	convert $tmpR1 -level ${min}%,${max}%,$gammaval $tmpR1
+
 	getChannelStats "$tmpG1"
 	echo "GREEN: min=$min%; max=$max%; gamma=$gammaval"
 	convert $tmpG1 -level ${min}%,${max}%,$gammaval $tmpG1
+
 	getChannelStats "$tmpB1"
 	echo "BLUE: min=$min%; max=$max%; gamma=$gammaval"
 	convert $tmpB1 -level ${min}%,${max}%,$gammaval $tmpB1
+
 	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
 fi
 echo ""

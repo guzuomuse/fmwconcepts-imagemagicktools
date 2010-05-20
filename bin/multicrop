@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 1/30/2010 .......... revised 4/21/2010
+# Developed by Fred Weinhaus 1/30/2010 .......... revised 5/3/2010
 # 
 # USAGE: multicrop [-c coords] [-f fuzzval] [-g grid] [-u unrotate] [-m mask] infile outfile
 # USAGE: multicrop [-h or -help]
@@ -187,7 +187,7 @@ else
 				   grid=`expr "$1" : '\([0-9]*\)'`
 				   [ "$grid" = "" ] && errMsg "--- GRID=$grid MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
 				   gridtestA=`echo "$grid <= 0" | bc`
-				   gridtestA=`echo "$grid >= 100" | bc`
+				   gridtestB=`echo "$grid >= 100" | bc`
 				   [ $gridtestA -eq 1 -a $gridtestB -eq 1 ] && errMsg "--- GRID=$grid MUST BE A NON-NEGATIVE INTEGER VALUE LARGER THAN 0 AND SMALLER THAN 100 ---"
 				   ;;
 			-u)    # unrotate

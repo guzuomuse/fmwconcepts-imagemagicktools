@@ -311,6 +311,10 @@ shiftimages()
 		j=`expr $j + 1`
 	done
 	}
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 	
 # process images
 case "$statistic" in
@@ -380,7 +384,11 @@ case "$statistic" in
 		convert $tmpA $tmpMax
 		
 		# do average
-		convert $tmpMin $tmpMax -average $outfile
+		if [ "$im_version" -ge "06060904" ]; then 
+			convert $tmpMin $tmpMax -evaluate-sequence mean $outfile
+		else
+			convert $tmpMin $tmpMax -average $outfile
+		fi
 		;;
 	5)	# average without max an min
 		# create 8 shifted images
@@ -511,8 +519,13 @@ case "$statistic" in
 			j=`expr $j + 1`
 		done
 		# average the weighted images and the weights
-		convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $tmpA
-		convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -average $tmp0
+		if [ "$im_version" -ge "06060904" ]; then 
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -evaluate-sequence mean $tmpA
+			convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -evaluate-sequence mean $tmp0
+		else
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $tmpA
+			convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -average $tmp0
+		fi
 		# divide averages
 		convert $tmpA $tmp0 -fx "u/v" $outfile
 		'
@@ -554,9 +567,17 @@ case "$statistic" in
 			j=`expr $j + 1`
 		done
 		# average the weighted images
-		convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $tmpA
+		if [ "$im_version" -ge "06060904" ]; then 
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -evaluate-sequence mean $tmpA
+		else
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $tmpA
+		fi
 		# average the weight images
-		convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -average $tmp0
+		if [ "$im_version" -ge "06060904" ]; then 
+			convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -evaluate-sequence mean $tmp0
+		else
+			convert $tmpw1 $tmpw2 $tmpw3 $tmpw4 $tmpw5 $tmpw6 $tmpw7 $tmpw8 -average $tmp0
+		fi
 		# divide averages
 		convert $tmpA $tmp0 -fx "u/v" $outfile
 		'
@@ -623,7 +644,11 @@ case "$statistic" in
 		shiftimages $tmpA
 
 		# average 8 shifted images
-		convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $outfile
+		if [ "$im_version" -ge "06060904" ]; then 
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -evaluate-sequence mean $outfile
+		else
+			convert $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $outfile
+		fi
 		;;
 	*)  # no other options allowed
 		errMsg "--- UNKNOWN STATISTICS ---"

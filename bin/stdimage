@@ -196,13 +196,23 @@ for img in $infilelist; do
 	convert $tmp0 $img $tmp0
 done
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
 # compute variance result
 # note -gamma 0.5 is same as -evaluate pow 2 and is same as square
 # var=ave(frames^2) - (ave(frames))^2
 # use -coalesce to separate frames and then delete intial bogus frame
-convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -average \) \
-	\( $tmp0 -coalesce -delete 0 -average -gamma 0.5 \) \
-	+swap -compose minus -composite $tmp0
+if [ "$im_version" -ge "06060904" ]; then 
+	convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -evaluate-sequence mean \) \
+		\( $tmp0 -coalesce -delete 0 -evaluate-sequence mean -gamma 0.5 \) \
+		+swap -compose minus -composite $tmp0
+else
+	convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -average \) \
+		\( $tmp0 -coalesce -delete 0 -average -gamma 0.5 \) \
+		+swap -compose minus -composite $tmp0
+fi
 
 if [ "$mode" = "var" ]; then
 	convert $tmp0 $stretch $outfile

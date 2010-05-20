@@ -30,6 +30,8 @@ autotrim --- Automatically trims the background border around a normally oriente
 
 autowhite --- Automatically adjusts the white balance of an image.
 
+balance --- Enhances the shadows, midtones and highlight regions of the image.
+
 bcimage --- Changes the brightness, contrast and/or saturation of an image.
 
 bcmatch --- Modifies one image to try to match its brightness, contrast and optionally saturation to that of another image.
@@ -86,6 +88,8 @@ dog --- Create an edge extracted image using the difference of two Gaussian blur
 
 downsize --- Downsizes (reduces) an image to a specified file size.
 
+duotonemap --- Enhances the shadows and/or highlight regions in an image.
+
 emboss --- Applies an emboss effect to an image.
 
 exposure --- Changes the exposure level of an image.
@@ -131,6 +135,8 @@ halo --- Applies a circular halo to an image.
 histmatch --- Modifies one image to try to match its histogram and optionally saturation to that of another image.
 
 histog --- Generates an output image which is composed of the histograms from each channel of the input image.
+
+huemap --- Transforms the hues in an image from one range to another.
 
 imageborder --- Appends an image border by extending the outer regions of the image.
 
@@ -283,6 +289,8 @@ unrotate --- Automatically unrotates a rotated image and trims the surrounding b
 uwcorrect --- Corrects the color balance for red light attenuation in pictures taken underwater.
 
 variableblur --- Applies a variable blur to an image based upon a mask image.
+
+wavemap --- Transforms the graylevels in each RGB channel according to a sinusoidal wave function.
 
 whitebalance --- Transform an image's overall color balance according to a desired change in a specified white point color.
 

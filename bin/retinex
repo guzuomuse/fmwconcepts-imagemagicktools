@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 11/15/2007 .......... revised 1/29/2008
+# Developed by Fred Weinhaus 11/15/2007 .......... revised 5/3/2010
 # 
 # USAGE: retinex [-m colormodel] [-f fact] [-c contrast] [-b bright] [-s sat] [-r res1,res2,res3] infile outfile
 # USAGE: retinex [-h or -help]
@@ -282,8 +282,16 @@ convert $tmpA \( +clone -blur 0x$res1 \) -fx "log((u/max(v,.000001))+1)" $tmp1
 convert $tmpA \( +clone -blur 0x$res2 \) -fx "log((u/max(v,.000001))+1)" $tmp2
 convert $tmpA \( +clone -blur 0x$res3 \) -fx "log((u/max(v,.000001))+1)" $tmp3
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
 # average results (normalize as log reduces range of values)
-convert $tmp1 $tmp2 $tmp3 -average -normalize $tmp1
+if [ "$im_version" -ge "06060904" ]; then 
+	convert $tmp1 $tmp2 $tmp3 -evaluate-sequence mean -normalize $tmp1
+else
+	convert $tmp1 $tmp2 $tmp3 -average -normalize $tmp1
+fi
 
 # convert back to RGB
 if [ "$colormodel" = "HSL" -o "$colormodel" = "hsl" ]

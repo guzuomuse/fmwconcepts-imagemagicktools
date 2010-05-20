@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/7/2010 .......... revised 4/7/2010
+# Developed by Fred Weinhaus 4/7/2010 .......... revised 5/2/2010
 # 
-# USAGE: emboss [-m method] [-a azimuth] [-e elevation] [-d depth] [-i intensity] infile outfile
+# USAGE: emboss [-m method] [-a azimuth] [-e elevation] [-d depth] [-i intensity] [-c compose] [-g gray] infile outfile
 # USAGE: emboss [-h or -help]
 # 
 # OPTIONS:
@@ -18,6 +18,10 @@
 # -d      depth             depth of emboss effect; integer>0; default=1
 # -i      intensity         intensity of emboss effect; -50<=integer<=50; 
 #                           default=0; only for method=2
+# -c      compose           compose method to use to composite emboss result 
+#                           with input image. The default is no composite.
+# -g      gray              desired base graylevel for method=1; 0<float<1;
+#                           default is no adjustment from normal shading
 # 
 ###
 # 
@@ -55,6 +59,16 @@
 # values increase the contrast and negative values decrease the contrast. 
 # The default=0
 # 
+# -c compose ... COMPOSE method to use to composite emboss result with input 
+# image. Valid compose methods include: bumpmap, multiply, color_burn, 
+# color_dodge, linear_burn, linear_dodge, linear_light, hard_light, soft_light,
+# pegtop_light, pin_light, vivid_light, overlay. The default is no composite.
+# 
+# -g gray ... GRAY is the desired base graylevel for method=1. Values are 
+# 0<float<1. The default is no adjustment from the normal shading base level 
+# which gets brighter as the elevation angle increases according to the 
+# sin(elevation). Nominal value for elevation=45 is gray=.707
+# 
 # REQUIREMENTS: IM 6.5.3-4 in order to support -set option:compose:args in 
 # method 2 and IM 6.4.8-8 in order to support -function polynomial in method 1.
 # 
@@ -66,11 +80,13 @@
 # 
 
 # set default values
-method=2			# 1=GIMP; 2=PS
+method=1			# 1=GIMP; 2=PS
 azimuth=135			# azimuth angle for light source
 elevation=45		# elevation angle for light source; method=1 only
 depth=1 			# depth factor
 intensity=0			# intensity change percent -50<=integer<=50; method=2 only
+compose=""          # compose method
+gray=""				# nominal graylevel for method=1
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -118,7 +134,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 12 ]
+elif [ $# -gt 16 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -183,6 +199,40 @@ else
 					   test2=`echo "$intensity > 50" | bc`
 					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- INTENSITY=$intensity MUST BE AN INTEGER BETWEEN -50 AND 50 ---"
 					   ;;
+				-c)    # get  compose
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COMPOSE SPECIFICATION ---"
+					   checkMinus "$1"
+					   compose=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$compose" in 
+					   		overlay) ;;
+					   		multiply) ;;
+					   		hard_light) ;;
+					   		soft_light) ;;
+					   		pegtop_light) ;;
+					   		pin_light) ;;
+					   		linear_light) ;;
+					   		vivid_light) ;;
+					   		linear_dodge) ;;
+					   		linear_burn) ;;
+					   		color_dodge) ;;
+					   		color_burn) ;;
+					   		bumpmap) ;;
+					   		*) errMsg "--- COMPOSE=$compose IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-g)    # get gray
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GRAY SPECIFICATION ---"
+					   checkMinus "$1"
+					   gray=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$gray" = "" ] && errMsg "--- GRAY=$gray MUST BE A NON-NEGATIVE INTEGER ---"
+					   test1=`echo "$gray <= 0" | bc`
+					   test2=`echo "$gray >= 1" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- GRAY=$gray MUST BE A FLOAT GREATER THAN 0 AND LESS THAN 1 ---"
+					   ;;
 				 -)    # STDIN and end of arguments
 					   break
 					   ;;
@@ -211,24 +261,33 @@ fi
 # setup temporary images and auto delete upon exit
 tmpA1="$dir/emboss_1_$$.mpc"
 tmpB1="$dir/emboss_1_$$.cache"
-trap "rm -f $tmpA1 $tmpB1; exit 0" 0
-trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+tmpA2="$dir/emboss_2_$$.mpc"
+tmpB2="$dir/emboss_2_$$.cache"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 1" 1 2 3 15
 
 # read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" -colorspace gray +repage "$tmpA1" ||
+convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 # get IM version
 im_version=`convert -list configure | \
 	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
+# set up for gray adjustment
+if [ "$gray" = "" ]; then
+	grayadjust=""
+else
+	newgray=`convert xc: -format "%[fx:100*($gray-sin(pi*$elevation/180))]" info:`
+	grayadjust="-evaluate add $newgray%"
+fi
 if [ $method -eq 1 ]; then
 	[ "$im_version" -lt "06040808" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
-	convert $tmpA1 -shade ${azimuth}x${elevation} $tmpA1
-	mean=`convert $tmpA1 -format "%[fx:mean]" info:`
+	convert $tmpA1 -colorspace gray -shade ${azimuth}x${elevation} $grayadjust $tmpA2
+	mean=`convert $tmpA2 -format "%[fx:mean]" info:`
 	aa=$depth
 	bb=`convert xc: -format "%[fx:$mean*(1-$depth)]" info:`
-	convert $tmpA1 -function polynomial "$aa,$bb" $outfile
+	convert $tmpA2 -function polynomial "$aa,$bb" $tmpA2
 	
 elif [ $method -eq 2 ]; then
 	xdist1=`convert xc: -format "%[fx:cos(pi*(180-$azimuth)/180)*$depth/2]" info:`
@@ -244,11 +303,17 @@ elif [ $method -eq 2 ]; then
 	fi
 	
 	[ "$im_version" -lt "06050403" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
-	convert $tmpA1 \( -clone 0 -negate \) \
+	convert \( $tmpA1 -colorspace gray \) \( -clone 0 -negate \) \
 		\( -clone 0 -distort SRT "0,0 1 0 $xdist2,$ydist2" \) \
 		\( -clone 1 -distort SRT "0,0 1 0 $xdist1,$ydist1" \) \
 		-delete 0,1 -compose blend -set option:compose:args 50 -composite \
-		$levelize $outfile
+		$levelize $tmpA2
+fi
+
+if [ "$compose" = "" ]; then
+	convert $tmpA2 $outfile
+else
+	convert $tmpA1 $tmpA2 -compose $compose -composite $outfile
 fi
 exit 0
 

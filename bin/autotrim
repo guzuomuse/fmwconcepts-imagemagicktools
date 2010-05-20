@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 12/3/2007 .......... revised 5/9/2009
+# Developed by Fred Weinhaus 12/3/2007 .......... revised 5/17/10
 # 
 # USAGE: autotrim [-f fuzzval] [-c coords] [-a angle] [-l left] [-r right ] [-t top ] [-b bottom ] infile outfile
 # USAGE: autotrim [-h or -help]
@@ -364,7 +364,7 @@ cropImage()
 		then
 		thresh=1
 		normalize=""
-	elif [ `echo "($angle >= 0) -a ($angle <= 45)" | bc` -eq 1 ]
+	elif [ `echo "($angle >= 0) && ($angle <= 45)" | bc` -eq 1 ]
 		then
 		# threshold relation to angle determined empirically and seems to be reasonably good, 
 		# but not perfect probably due to quantization of boundary in binarized image

@@ -261,19 +261,35 @@ elif [ "$rotation" = "yes" ]; then
 		-contrast-stretch 0 -function sinusoid "$yf,0,.5,.5" $tmp2
 fi
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
 # composite color screen with image
 if [ "$type" = "simple" ]; then
-	convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	if [ "$im_version" -ge "06060904" ]; then 
+		convert $tmp1 $tmp2 -evaluate-sequence mean -contrast-stretch 0 $tmp1
+	else
+		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	fi
 	convert $infile \( $tmp1 +level-colors ${bcolor},white \) $tmp1 \
 		-compose multiply -composite $outfile
 
 elif [ "$type" = "displace" -a "$method" = "1" ]; then
-	convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	if [ "$im_version" -ge "06060904" ]; then 
+		convert $tmp1 $tmp2 -evaluate-sequence mean -contrast-stretch 0 $tmp1
+	else
+		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	fi
 	composite -displace ${amount}x${amount} $tmp1 $tmpA1 $outfile
 elif [ "$type" = "displace" -a "$method" = "2" ]; then
 	composite -displace ${amount}x${amount} $tmp1 $tmpA1 $tmp2 $outfile
 elif [ "$type" = "displace" -a "$method" = "3" ]; then
-	convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	if [ "$im_version" -ge "06060904" ]; then 
+		convert $tmp1 $tmp2 -evaluate-sequence mean -contrast-stretch 0 $tmp1
+	else
+		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
+	fi
 	composite -displace ${amount}x${amount} $tmp2 $tmpA1 $tmp1 $outfile
 fi
 exit 0

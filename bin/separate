@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 2/25/2010 .......... 4/26/2010
+# Developed by Fred Weinhaus 2/25/2010 .......... 5/3/2010
 #
-# USAGE: separate [-m mode] [-t] [-v] [-l] [-b bgcolor] [-e exponent] infile outfile
+# USAGE: separate [-m mode] [-g grid] [-t] [-v] [-l] [-b bgcolor] [-e exponent] infile outfile
 # USAGE: separate [-h or -help]
 #
 # OPTIONS:
@@ -12,6 +12,10 @@
 #                        stretched index number; 5=output image for each 
 #                        binarized index number; 6=output image for each 
 #                        colored index number; default=3
+# -g      grid           grid spacing in both x and y as percent of 
+#                        image width and height; used to locate white areas;
+#                        integer>0; default is not to use grid, but use 
+#                        precise but slower method
 # -t                     trim to bounding box in method=4,5,6
 # -v                     keep virtual canvas when trimming
 # -l                     list image size and offset when trimming
@@ -47,6 +51,12 @@
 # Mode=5 is the same as mode=4, except the each output is binarized. Mode=6 is 
 # the same as mode=4, except each output is color coded. The default=3
 #
+# -g grid ... GRID is the grid spacing for testing points in the input image 
+# to see if they are white or black. The grid value is specified as an 
+# integer percent greater than 0 and less than 100 of the width and height 
+# of the input image. The default is not to use the grid, but to use a precise,  
+# but slower method.
+# 
 # -t ... TRIM to bounding box for methods 4, 5 or 6
 # 
 # -v ... Keep virtual canvas information with trimmed outputs.
@@ -75,6 +85,7 @@
 
 # set default values
 mode=3				# 1 to 6
+grid=""				# grid for faster, but less precise method
 trim="no"			# trim to bounding box for methods 4,5,6; yes or no
 vv="no"             # keep virtual canvas; yes or no
 list="no"           # list virtual canvas; yes or no
@@ -127,7 +138,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 11 ]
+elif [ $# -gt 13 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -156,6 +167,17 @@ else
 					   mode=`expr "$1" : '\([0-9]\)'`
 					   [ "$mode" = "" ] && errMsg "--- MODE=$mode MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
 					   [ $mode -lt 0 -o $mode -gt 6 ] && errMsg "--- MODE=$mode MUST BE AN INTEGER BETWEEN 1 AND 6 ---"
+					   ;;
+				-g)    # grid
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GRID SPECIFICATION ---"
+					   checkMinus "$1"
+					   grid=`expr "$1" : '\([0-9]*\)'`
+					   [ "$grid" = "" ] && errMsg "--- GRID=$grid MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   gridtestA=`echo "$grid <= 0" | bc`
+					   gridtestB=`echo "$grid >= 100" | bc`
+					   [ $gridtestA -eq 1 -a $gridtestB -eq 1 ] && errMsg "--- GRID=$grid MUST BE A NON-NEGATIVE INTEGER VALUE LARGER THAN 0 AND SMALLER THAN 100 ---"
 					   ;;
 				-e)    # get exponent
 					   shift  # to get the next parameter - lineval
@@ -222,26 +244,67 @@ convert $tmpA1 $tmpA2
 uniquecolors=`convert $tmpA1 -format "%k" info:`
 [ $uniquecolors -ne 2 ] && echo "--- IMAGE IS NOT BINARY ---"
 
+
+
+
 # process image to get indices for each shape
-val=0
-graylvl=1
-while [ $val -eq 0 -a $graylvl -ne 256 ]; do
-	# find white pixel and get its coords
-	result=`compare -metric pae -dissimilarity-threshold 1 \
-		$tmpA1 -size 1x1 xc:white null: 2>&1`
-	val=`echo "$result" | cut -d\  -f 1`
-	coords=`echo "$result" | cut -d\  -f 4`
-#	echo "val=$val; coords=$coords"
-	[ $val -ne 0 ] && break
 
-	# floodfill $tmpA2 with graylevel index at coords
-	convert $tmpA2 -fill "gray(${graylvl})" -draw "color ${coords} floodfill" $tmpA2
-
-	# floodfill $tmpA1 with black at coords
-	convert $tmpA1 -fill "black" -draw "color ${coords} floodfill" $tmpA1
-	graylvl=$(($graylvl + 1))
-done
+if [ "$grid" = "" ]; then
+	# process without grid: slow, but precise method
+	val=0
+	graylvl=1
+	while [ $val -eq 0 -a $graylvl -ne 256 ]; do
+		# find white pixel and get its coords
+		result=`compare -metric pae -dissimilarity-threshold 1 \
+			$tmpA1 -size 1x1 xc:white null: 2>&1`
+		val=`echo "$result" | cut -d\  -f 1`
+		coords=`echo "$result" | cut -d\  -f 4`
+	#	echo "val=$val; coords=$coords"
+		[ $val -ne 0 ] && break
+	
+		# floodfill $tmpA2 with graylevel index at coords
+		convert $tmpA2 -fill "gray(${graylvl})" -draw "color ${coords} floodfill" $tmpA2
+	
+		# floodfill $tmpA1 with black at coords
+		convert $tmpA1 -fill "black" -draw "color ${coords} floodfill" $tmpA1
+		graylvl=$(($graylvl + 1))
+	done
+else
+	# process with grid: fast, but not precise (may miss some areas)
+	width=`identify -ping -format "%w" $tmpA1`
+	height=`identify -ping -format "%h" $tmpA1`
+	wg=`convert xc: -format "%[fx:round($grid*$width/100)]" info:`
+	hg=`convert xc: -format "%[fx:round($grid*$height/100)]" info:`
+	num=`convert xc: -format "%[fx:round(100/$grid) - 2]" info:`
+#	k=0
+	y=0
+	graylvl=1
+	for ((j=0;j<=$num;j++))
+		do
+		x=0
+		y=$(($y + $hg))
+		for ((i=0;i<=$num;i++))
+			do
+			x=$(($x + $wg))
+			# test if found white
+			testcolor=`convert $tmpA1 -format \
+				"%[fx:u.p{$x,$y}=="white"?1:0]" info:` 
+			if [ $testcolor -eq 1 ]; then
+			echo "$x $y $testcolor $graylvl"
+				coords="$x,$y"
+				# floodfill $tmpA2 with graylevel index at coords
+				convert $tmpA2 -fill "gray(${graylvl})" -draw "color ${coords} floodfill" $tmpA2
+			
+				# floodfill $tmpA1 with black at coords
+				convert $tmpA1 -fill "black" -draw "color ${coords} floodfill" $tmpA1
+#				k=$(($k + 1))
+				graylvl=$(($graylvl + 1))
+			fi
+		done
+	done
+fi
 numgrays=$graylvl
+echo "nugrays=$numgrays"
 
 # setup blackthreshold
 #blackthresh=`convert xc: -format "%[fx:ceil(100/($numgrays-1))]" info:`
