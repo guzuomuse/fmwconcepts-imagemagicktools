@@ -6,5 +6,7 @@ awk -F\-\- '{ print $1}' script_list.txt | egrep '^\w' | while read name; do
     wget "http://www.fmwconcepts.com/imagemagick/downloadcounter.php?scriptname=${name}&dirname=${name}" -O ${name}
     chmod +x ${name}
 done
+git add *
+git commit -m 'sync with master site' -a
 cd -
 

@@ -1,0 +1,378 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/23/2010 .......... 5/23/2010
+#
+# USAGE: pagecurl [-r rangle] [-l langle] [-m mode] [-c color] [-b bgcolor] [-a arc] [-x xcoord] [-y ycoord] [-d delta] infile outfile
+# USAGE: pagecurl [-help]
+#
+# OPTIONS:
+#
+# -r      rangle       angle on right side of curl; 0<=integer<=90; 
+#                      clockwise rotation from right edge of image; 
+#                      must be less than langle; default=20
+# -l      langle       angle on left side of curl; 0<=integer<=90; 
+#                      clockwise rotation from right edge of image; 
+#                      must be greater than rangle; default=40
+# -m      mode         mode of shading curl; plain, grad or doublegrad; 
+#                      default=doublegrad
+# -c      color        color to apply to curl; any valid IM color; default=white
+# -b      bgcolor      background color to apply to image where curled away;
+#                      any valid IM color; default=none (transparent)
+# -a      arc          curl shaping parameter; percent ratio of ellipse radii 
+#                      ry/rx; 0<=integer<=100; 100 is semi-circle; default=75
+# -x      xcoord       x coordinate for apex of curl; default=right image edge
+# -y      ycoord       y coordinate for apex of curl; default=upper image edge
+# -d      delta        lengthening adjustment for curl in pixels; default=0
+#
+###
+#
+# NAME: PAGECURL 
+# 
+# PURPOSE: Applies a pagecurl effect to the lower right corner of an image.
+# 
+# DESCRIPTION: PAGECURL Applies a pagecurl effect to the lower right corner 
+# of an image. The apex of the curl is nominally in the upper right corner of 
+# the image, but can be adjusted. The curl is always right to left. The curl 
+# can be shaded and/or colored. The removed area can be colored or transparent. 
+# Note that this is a 2D simulation and not a true 3D effect.
+# 
+# 
+# OPTIONS: 
+# 
+# -r rangle ... RANGLE is the angle on the right side of the curl. Values are 
+# integers between 0 and 90 degrees (clocwise rotation from right edge of 
+# image), but must be less langle. The default=20.
+#
+# -l langle ... LANGLE is the angle on the left side of the curl. Values are 
+# integers between 0 and 90 degrees (clocwise rotation from right edge of 
+# image), but must be greater than rangle. The default=40.
+#
+# -m mode ... MODE shading on the curl. Choices are: plain (or p), grad (or g)
+# for gradient, or doublegrad (or d) for double gradient. Default=doublegrad.
+#
+# -c color ... COLOR is the color to apply to curl. Any valid IM color is 
+# allowed. The default=white.
+# 
+# -b bgcolor ... BGCOLOR is the color to apply to curled away part of the image. 
+# Any valid IM color is allowed. The default=none for transparent.
+# 
+# -a arc ... ARC is the curl shaping parameter. It is the percent ratio of  
+# the ellipse radii, ry/rx. Values are integers between 0 and 100. 100 is a 
+# semi-circle. Smaller values produce a more flattened semi-ellipse. The 
+# default=75.
+# 
+# -x xcoord ... XCOORD is the X coordinate for the apex of the curl. Values 
+# are 0<integers<width. The default is the right edge of the image.
+#
+# -y ycoord ... YCOORD is the Y coordinate for the apex of the curl. Values 
+# are integers. The default is the upper edge of the image.
+# 
+# -d delta ... DELTA is an adjustment of the length of the curl so that it 
+# reaches the bottom of the image. A larger value is needed as the curl gets 
+# wider. Values are integers>=0. The default=0
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+rangle=20				# angle to right side of curl
+langle=40				# angle to left side of curl
+mode="doublegrad"		# plain, grad, doublegrad
+color="white"			# color for curl
+bgcolor="none"			# background color
+arc=75					# ellipse percent radii ratio ry/rx; 100 is circle
+xcoord=""				# apex of cone; default=width (UR corner)
+ycoord=""				# apex of cone; default=0 (UR corner)
+delta=10				# adjustment to length of curl so it reaches the bottom
+blurval=20				# blur radius value for doublegrad
+levelvals="20x55"		# level params for gradient adjustment
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 20 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-r)    # get rangle
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RIGHTANGLE SPECIFICATION ---"
+					   checkMinus "$1"
+					   rangle=`expr "$1" : '\([0-9]*\)'`
+					   [ "$rangle" = "" ] && errMsg "--- RIGHTANGLE=$rangle MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$rangle < 0" | bc`
+					   test2=`echo "$rangle > 90" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- RIGHTANGLE=$rangle MUST BE AN INTEGER BETWEEN 0 AND 90 ---"
+					   ;;
+				-l)    # get langle
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID LEFTANGLE SPECIFICATION ---"
+					   checkMinus "$1"
+					   langle=`expr "$1" : '\([0-9]*\)'`
+					   [ "$langle" = "" ] && errMsg "--- LEFTANGLE=$langle MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$langle < 0" | bc`
+					   test2=`echo "$langle > 90" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- LEFTANGLE=$langle MUST BE AN INTEGER BETWEEN 0 AND 90 ---"
+					   ;;
+				-m)    # get  mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$mode" in 
+					   		plain|p) mode=plain ;;
+					   		grad|g) mode=grad ;;
+					   		doublegrad|d) mode=doublegrad ;;
+					   		*) errMsg "--- MODE=$mode IS AN INVALID VALUE ---" ;;
+					   	esac
+					   ;;
+				-c)    # get color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   color="$1"
+					   ;;
+				-b)    # get bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   ;;
+				-a)    # get arc
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ARC SPECIFICATION ---"
+					   checkMinus "$1"
+					   arc=`expr "$1" : '\([0-9]*\)'`
+					   [ "$arc" = "" ] && errMsg "--- ARC=$arc MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$arc < 0" | bc`
+					   test2=`echo "$arc > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- ARC=$arc MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				-x)    # get xcoord
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID XCOORD SPECIFICATION ---"
+					   checkMinus "$1"
+					   xcoord=`expr "$1" : '\([0-9]*\)'`
+					   [ "$xcoord" = "" ] && errMsg "--- XCOORD=$xcoord MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-y)    # get ycoord
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   #errorMsg="--- INVALID YCOORD SPECIFICATION ---"
+					   #checkMinus "$1"
+					   ycoord=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$ycoord" = "" ] && errMsg "--- YCOORD=$ycoord MUST BE AN INTEGER ---"
+					   ;;
+				-d)    # get delta
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DELTA SPECIFICATION ---"
+					   checkMinus "$1"
+					   delta=`expr "$1" : '\([0-9]*\)'`
+					   [ "$delta" = "" ] && errMsg "--- DELTA=$delta MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set temporaries
+tmpA1="$dir/pagecurl_1_$$.mpc"
+tmpB1="$dir/pagecurl_1_$$.cache"
+tmpA2="$dir/pagecurl_2_$$.mpc"
+tmpB2="$dir/pagecurl_2_$$.cache"
+tmpA3="$dir/pagecurl_3_$$.mpc"
+tmpB3="$dir/pagecurl_3_$$.cache"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 1" 1 2 3 15
+
+# test input image
+convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+
+
+ww=`convert $tmpA1 -ping -format "%w" info:`
+hh=`convert $tmpA1 -ping -format "%h" info:`
+wm1=`convert xc: -format "%[fx:$ww-1]" info:`
+hm1=`convert xc: -format "%[fx:$hh-1]" info:`
+xc=`convert xc: -format "%[fx:$ww/2]" info:`
+yc=`convert xc: -format "%[fx:$hh/2]" info:`
+
+
+# test for valid angles
+[ $langle -le $rangle ] && errMsg "--- INCONSISTENT LEFT AND RIGHT ANGLES ---"
+
+# get default values for xcoord and ycoord
+if [ "$xcoord" = "" -a "$ycoord" = "" ]; then
+	xcoord=$wm1
+	ycoord=0
+elif [ "$xcoord" = "" -a "$ycoord" != "" ]; then
+	xcoord=$wm1
+elif [ "$xcoord" != "" -a "$ycoord" = "" ]; then
+	ycoord=0
+fi
+
+# test for valid xcoord
+[ $xcoord -le 0 -o $xcoord -ge $ww ] && errMsg "--- INVALID XCOORD ---"
+
+
+# set apex (default at upper right) corner
+p1x=$xcoord
+p1y=$ycoord
+
+# get intersection of line at rangle with bottom edge of image
+p2y=$(($hm1+$delta))
+p2x=`convert xc: -format "%[fx:$xcoord-($hm1+$delta-$ycoord)*tan(pi*$rangle/180)]" info:`
+
+# get length of line 1
+len1=`convert xc: -format "%[fx:hypot(($p2x-$p1x),($p2y-$p1y))]" info:`
+
+# get end of line2 at langle
+p3x=`convert xc: -format "%[fx:$xcoord-$len1*sin(pi*$langle/180)]" info:`
+p3y=`convert xc: -format "%[fx:$ycoord+$len1*cos(pi*$langle/180)]" info:`
+
+# get rotation angles
+angle3=`convert xc: -format "%[fx:($rangle+$langle)/2]" info:`
+angle4=`convert xc: -format "%[fx:-90+$angle3]" info:`
+
+# draw filled triangle
+if [ "$mode" = "plain" ]; then
+	# draw colored polygon
+	convert $tmpA1 \
+		-fill $color -draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \
+		$tmpA3
+elif [ "$mode" = "grad" ]; then
+	# draw white polygon on black background and trim to boundary
+	# create gradient of same size and rotate and stretch contrast
+	# multiply trimmed polygon with gradient and colorize
+	# insert polygon back to original position
+	# insert colorized gradient back to correct position relative to infile
+	# insert trimmed polygon back to correct position relative to infile
+	# composite masked colored gradient image over infile using polygon as mask
+	convert $tmpA1 -threshold -1 -negate \
+		-fill white -draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \
+		-trim $tmpA2
+		www=`convert $tmpA2 -ping -format "%w" info:`
+		hhh=`convert $tmpA2 -ping -format "%h" info:`
+		xoff=`convert $tmpA2 -ping -format "%X" info:`
+		yoff=`convert $tmpA2 -ping -format "%Y" info:`
+		convert $tmpA1 \
+		\( -size ${www}x${hhh} gradient: -distort SRT "$angle4" -level ${levelvals}% \) $tmpA2 \
+		\( -clone 1 -clone 2 -alpha off -compose multiply -composite +level-colors black,$color \
+		-size ${ww}x${hh} xc:black +swap -geometry ${xoff}${yoff} -compose over -composite \) \
+		\( -clone 2 -size ${ww}x${hh} xc:black +swap -geometry ${xoff}${yoff} -compose over -composite \) \
+		-delete 1,2 -alpha off +geometry -compose over -composite $tmpA3
+elif [ "$mode" = "doublegrad" ]; then
+	# draw white polygon on black background
+	# apply color and blur to get double grad
+	# composite colored blurred image over infile using polygon as mask
+	convert $tmpA1 \
+		\( -clone 0 -threshold -1 -negate -fill white \
+		-draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \) \
+		\( -clone 1 +level-colors black,$color -blur ${blurval}x65000 \) \
+		+swap -compose over -composite $tmpA3
+fi
+
+# convert arc from percent to fraction
+arc=`convert xc: -format "%[fx:$arc/100]" info:`
+
+# create and apply mask of semiellipse between pts 2 and 3 and composite original back
+# draw extra black line to avoid a thin dark line showing at bottom of semi-ellipse
+convert $tmpA1 $tmpA3 \
+	\( -clone 0 -threshold -1 \
+	-fill black -draw "path 'M $p2x,$p2y   A 1,$arc  $angle3  0,0 $p3x,$p3y'" \
+	-fill black -stroke black -strokewidth 1 -draw "line $p2x,$p2y  $p3x,$p3y" \) \
+	-alpha off -compose over -composite $tmpA3
+
+
+# create and apply mask for removed area
+convert $tmpA3 \
+	\( +clone -threshold -1 \
+	-fill black -draw "polygon $p1x,$p1y  $p2x,$p2y $wm1,$hm1 $wm1,0" \) \
+	-alpha off -compose copy_opacity -composite \
+	-compose over -background $bgcolor -flatten $outfile
+
+exit 0
