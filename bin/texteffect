@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/31/2008 .......... revised 6/6/2009
+# Developed by Fred Weinhaus 3/31/2008 .......... revised 5/20/2010
+# Enhancement provided by Aditya Naik  .......... revised 5/16/2010
 #
 # USAGE: texteffect -t "some text" [-f font] [-p pointsize] [-s style] [-e effect] [-l lineweight] [-d distortion] [-r rotation] [-x excess-area] [-c text-color(s)] [-o outline-color] [-b background-color] [-u under-color] [-g glow-shadow-color] [-m smudge] [-w wavecycles] [-a arc-angle] [-A gradient-angle] [infile] outfile
 # USAGE: texteffect [-h or -help]
@@ -158,6 +159,9 @@
 # NOTE: Some effects require the use of -fx and thus will be slower than the others. 
 # These include: the variations on bulge, concave, convex and pinch for IM versions 
 # prior to 6.4.3-7. The arc effect requires IM 6.3.5-5
+# 
+# Thanks to Aditya Naik for improvments on the techniques for generating the 
+# concave, convex, pinch and bulge effects.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -567,7 +571,6 @@ convert -background "$bc" \
 	wd=`identify -format %w $tmp0`
 	ht=`identify -format %h $tmp0`
 	dim="${wd}x${ht}"
-
 
 # separate text colors to get gradient colors if necessary
 tc1=`echo "${tc}-" | cut -d- -f1`
@@ -1006,38 +1009,41 @@ elif [ "$effect" = "bulge" -o "$effect" = "pinch" -o "$effect" = "bulge-top" -o 
 	if [ "$im_version" -ge "06040307" ]
 		then
 		# convert $b into format consistent with -distort by normalizing coefficient by Rm=min(wd,ht)/2
+		# trim if the effect is concave or convex for top or bottom 
+		if [ "$effect" = "bulge-top" -o "$effect" = "bulge-bottom" -o "$effect" = "pinch-top" -o "$effect" = "pinch-bottom" ]
+		  then
+		  convert $tmp0 $vp -trim +repage $tmp0
+		fi
 		ww=`convert $tmp0 -format "%w" info:`
 		hh=`convert $tmp0 -format "%h" info:`
+		halfw=`convert xc: -format "%[fx:$ww/2]" info:`
+		# get new height to accomodate the transformation
 		# factor of 2 below should not be needed???
 		b=`convert xc: -format "%[fx:$b*2*min($ww,$hh)/($ww+$hh)]" info:`
 		if [ "$effect" = "bulge-top" -o "$effect" = "pinch-top" ]
 			then
+			fac=1.5
+			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
 			convert $tmp0 $vp -background $bc -filter lanczos \
-				-distort barrelinverse "0 0 0 1   0 0 $b $a" \
-				$tmp1
-			h0top=`convert xc: -format "%[fx:ceil(($hh-1)/2)]" info:`
-			h0bot=`expr $hh - $h0top`
-			h1top=`convert $tmp1 -format "%[fx:ceil((h-1)/2)]" info:`
-			convert $tmp1[${ww}x${h1top}+0+0] $tmp0[${ww}x${h0bot}+0+${h0top}] -append \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				-gravity south -extent ${ww}x${newhh} \
+				-distort barrelinverse "0 0 0 1   0 0 $b $a   $halfw $newhh" \
+				$trimpad $tmp0
 		elif [ "$effect" = "bulge-bottom" -o "$effect" = "pinch-bottom" ]
 			then
+			fac=1.5
+			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
 			convert $tmp0 $vp -background $bc -filter lanczos \
-				-distort barrelinverse "0 0 0 1   0 0 $b $a" \
-				$tmp1
-			h0top=`convert xc: -format "%[fx:floor(($hh-1)/2)]" info:`
-			h1top=`convert $tmp1 -format "%[fx:floor((h-1)/2)]" info:`
-			h1bot=`convert $tmp1 -format "%[fx:h-$h1top]" info:`
-			convert $tmp0[${ww}x${h0top}+0+0] $tmp1[${ww}x${h1bot}+0+${h1top}] -append \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				-gravity north -extent ${ww}x${newhh} \
+				-distort barrelinverse "0 0 0 1   0 0 $b $a   $halfw 0" \
+				$trimpad $tmp0
 		elif [ "$effect" = "bulge" -o "$effect" = "pinch" ]
 			then
+			fac=1.5
+			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
 			convert $tmp0 $vp -background $bc -filter lanczos \
+				-gravity center -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 0 $b $a" \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				$trimpad $tmp0
 		fi				
 	else
 	convert $tmp0 $vp -background $bc \
@@ -1052,50 +1058,53 @@ elif [ "$effect" = "concave" -o "$effect" = "convex" -o "$effect" = "concave-top
 	if [ "$im_version" -ge "06040307" ]
 		then
 		# convert $b into format consistent with -distort by normalizing coefficient by Rm=min(wd,ht)/2
+		# trim if the effect is concave or convex for top or bottom 
+		if [ "$effect" = "concave-top" -o "$effect" = "concave-bottom" -o "$effect" = "convex-top" -o "$effect" = "convex-bottom" ]
+		  then
+		  convert $tmp0 $vp -trim +repage $tmp0
+		fi
+
 		ww=`convert $tmp0 -format "%w" info:`
 		hh=`convert $tmp0 -format "%h" info:`
+		halfw=`convert xc: -format "%[fx:$ww/2]" info:`
+		# get new height to accomodate the transformation
 		# factor of 2 below should not be needed???
 		if [ "$effect" = "concave" -o "$effect" = "concave-top" -o "$effect" = "concave-bottom" ]
 			then
 			b=`convert xc: -format "%[fx:$b*(2*min($ww,$hh)/(1.3*($ww+$hh)))^2]" info:`
+		    fac=1.25
 		else
 			b=`convert xc: -format "%[fx:$b*(2*min($ww,$hh)/($ww+$hh))^2]" info:`
+		    fac=2.0
 		fi		
+		newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
+
 		if [ "$effect" = "convex-top" -o "$effect" = "concave-top" ]
 			then
 			convert $tmp0 $vp -background $bc -filter lanczos \
-				-distort barrelinverse "0 0 0 1   0 $b 0 $a" \
-				$tmp1
-			h0top=`convert xc: -format "%[fx:ceil(($hh-1)/2)]" info:`
-			h0bot=`expr $hh - $h0top`
-			h1top=`convert $tmp1 -format "%[fx:ceil((h-1)/2)]" info:`
-			convert $tmp1[${ww}x${h1top}+0+0] $tmp0[${ww}x${h0bot}+0+${h0top}] -append \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				-gravity south -extent ${ww}x${newhh} \
+				-distort barrelinverse "0 0 0 1   0 $b 0 $a   $halfw $newhh" \
+				$trimpad $tmp0
 		elif [ "$effect" = "convex-bottom" -o "$effect" = "concave-bottom" ]
 			then
 			convert $tmp0 $vp -background $bc -filter lanczos \
-				-distort barrelinverse "0 0 0 1   0 $b 0 $a" \
-				$tmp1
-			h0top=`convert xc: -format "%[fx:floor(($hh-1)/2)]" info:`
-			h1top=`convert $tmp1 -format "%[fx:floor((h-1)/2)]" info:`
-			h1bot=`convert $tmp1 -format "%[fx:h-$h1top]" info:`
-			convert $tmp0[${ww}x${h0top}+0+0] $tmp1[${ww}x${h1bot}+0+${h1top}] -append \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				-gravity north -extent ${ww}x${newhh} \
+				-distort barrelinverse "0 0 0 1   0 $b 0 $a   $halfw 0" \
+				$trimpad $tmp0
 		elif [ "$effect" = "convex" -o "$effect" = "concave" ]
 			then
+		    fac=1.25
+			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
 			convert $tmp0 $vp -background $bc -filter lanczos \
+				-gravity center -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 $b 0 $a" \
-				-background $bc -trim -bordercolor $bc -border $pad \
-				$tmp0
+				$trimpad $tmp0
 		fi				
 	else
 	convert $tmp0 $vp -background $bc \
 		-monitor -fx \
 		"xd=(i-$xc); yd=(j-$yc); $rd ys=(yd/($a+$b*rd^2))+$yc; $result" \
-		-background $bc -trim -bordercolor $bc -border $pad \
-		$tmp0
+		$trimpad $tmp0
 	fi
 
 fi

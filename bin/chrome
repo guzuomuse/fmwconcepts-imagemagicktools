@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/10/2010 .......... revised 4/10/2010
+# Developed by Fred Weinhaus 4/10/2010 .......... revised 5/28/2010
 # 
 # USAGE: chrome [-i intensity] [-n numcycles] [-s smooth] [-a azimuth] [-e elevation] [-c color] [-b bgcolor] [-f fuzzfact] infile outfile
 # USAGE: chrome [-h or -help]
@@ -78,7 +78,7 @@
 smooth=3				#smoothing factor; float>=0
 azimuth=135				#azimuth angle; 0<=integer<=360
 elevation=45			#elevation angle: 0<=integer<=90
-amplitude=100			#amplitude; integer>=0
+intensity=100			#intensity; integer>=0
 numcycles=2				#number cycles; integer>0
 color=""				#color for chrome
 bgcolor=""				#background color
@@ -261,7 +261,7 @@ im_version=`convert -list configure | \
 [ "$im_version" -lt "06040809" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
 
 
-amp0=`convert xc: -format "%[fx:$amplitude/100]" info:`
+amp0=`convert xc: -format "%[fx:$intensity/100]" info:`
 amp1=`convert xc: -format "%[fx:$amp0/($amp0+1)]" info:`
 amp2=`convert xc: -format "%[fx:1/($amp0+1)]" info:`
 cyc=`convert xc: -format "%[fx:0.5+$numcycles]" info:`

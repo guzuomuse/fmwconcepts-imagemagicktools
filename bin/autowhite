@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/13/2008 .......... revised 6/3/2009
+# Developed by Fred Weinhaus 10/13/2008 .......... revised 5/31/2010
 #
 # USAGE: autowhite [-m method] [-p percent] infile outfile
 # USAGE: autowhite [-help]
@@ -21,18 +21,18 @@
 # 
 # DESCRIPTION: AUTOWHITE automatically adjusts the white balance of an 
 # image. Two methods are available. Method 1 uses a multiplicative 
-# adjustment using -recolor. Method 2 uses an additive adjustment 
-# using -evaluate add. Both methods compute RGB channel averages of a 
-# user specified percentage of pixels closest to white. The channel 
+# adjustment using -recolor (-color-matrix). Method 2 uses an additive 
+# adjustment using -evaluate add. Both methods compute RGB channel averages 
+# of a user specified percentage of pixels closest to white. The channel 
 # averages are used in a ratio compared with white in method 1 and as  
 # a difference from white in method 2.
 # 
 # OPTIONS: 
 # 
 # -m method ... METHOD defines how the white balance adjustment will 
-# be handled. Method 1 uses a multiplicative adjustment using -recolor, 
-# where the recolor matrix values are the ratios of 100% to the channel 
-# averages in percent graylevel. Method 2 uses an additive adjustment 
+# be handled. Method 1 uses a multiplicative adjustment using -recolor 
+# (-color-matrix), where the matrix values are the ratios of 100% to the  
+# channel averages in percent graylevel. Method 2 uses an additive adjustment 
 # using -evaluate add, where the additive amount is the percent difference 
 # of the channel averages from 100%. Method 1 is generally superior. 
 # Method 2 often shifts the overall color oddly. The default is method=1.
@@ -220,8 +220,14 @@ getAverage()
 	[ "$ave" = "0" -o "$ave" = "0.0" ] && ave=100
 	ratio=`convert xc: -format "%[fx:100/$ave]" info:`
 	diff=`convert xc: -format "%[fx:(100-$ave)]" info:`
-}
+	}
 
+# set up -recolor or -color-matrix
+if [ "$im_version" -lt "06060100" ]; then
+	process="-recolor"
+else
+	process="-color-matrix"
+fi
 
 # process image
 
@@ -262,7 +268,7 @@ bluediff=$diff
 if [ $method -eq 2 ]; then
 	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
 elif [ $method -eq 1 ]; then
-	convert $tmpA1 -recolor "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $outfile
+	convert $tmpA1 $process "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $outfile
 fi
 
 exit 0

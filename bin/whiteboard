@@ -231,6 +231,9 @@ whiteBalance()
 	# get image size
 	ww=`convert $img -format "%w" info:`
 	hh=`convert $img -format "%h" info:`
+	# get im version
+	im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 	# separate channels
 	convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
 	convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
@@ -256,7 +259,11 @@ whiteBalance()
 	getAverage "$tmpT1"
 	blueratio=$ratio
 	# process image
-	convert $tmpA1 -recolor "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $tmpA1
+	if [ "$im_version" -lt "06060100" ]; then	
+		convert $tmpA1 -recolor "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $tmpA1
+	else
+		convert $tmpA1 -color-matrix "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $tmpA1
+	fi	
 	}
 
 # test for correct number of arguments and get values

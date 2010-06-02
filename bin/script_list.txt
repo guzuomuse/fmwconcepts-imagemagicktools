@@ -72,6 +72,8 @@ colorspectrum --- Generates a spectrum-like image from the colors in an image.
 
 colortemp --- Transforms an image's overall color balance according to a desired color temperature change.
 
+cone --- Draws a cone-shaped object on an image.
+
 curves --- Generate a smoothly interpolated, curved mapping look up table from a set of break points and applies it to an image.
 
 cylinderize --- Applies a cylinder distortion to an image so that the image is wrapped about the cylinder.
@@ -187,6 +189,8 @@ notch --- Creates and applies a notch filter to an image in the frequency domain
 omnistretch --- Enhances the dynamic range of brightness values and optionally saturation values in an image
 
 otsuthresh --- Automatically thresholds an image to binary (b/w) format using Otsu's between class variance technique.
+
+pagecurl --- Applies a pagecurl effect to the lower right corner of an image.
 
 pano2rect --- Applies vertical perspective correction to an angular panoramic image.
 

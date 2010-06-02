@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/14/2008 .......... revised 6/2/2009
+# Developed by Fred Weinhaus 10/14/2008 .......... revised 5/31/2010
 #
 # USAGE: autocolor [-m method] [-c clipmode] [-l cliplow] [-h cliphigh] [-n neutralgray] infile outfile
 # USAGE: autocolor [-help]
@@ -28,21 +28,21 @@
 # the mean value of each channel to the neutral gray value. There are
 # three methods that can be used. The first uses -gamma computed from the 
 # neutral gray value and mean of each of the RGB channels. The second uses 
-# -recolor computed from the neutral gray value and mean of each of the 
-# RGB channels. The third skips this step. In addition to corrrecting the 
-# neutral color, the histogram is stretched to full black and white using 
-# the clip values.
+# -recolor (or -color-matrix) computed from the neutral gray value and mean 
+# of each of the RGB channels. The third skips this step. In addition to 
+# corrrecting the neutral color, the histogram is stretched to full black 
+# and white using the clip values.
 # 
 # OPTIONS: 
 # 
 # -m method ... METHOD defines how the neutral color will be set. The 
 # choices are gamma (g), recolor (r) or none (n). Method=gamma uses 
 # -gamma to shift the mean value to neutral gray. Method=recolor uses 
-# -recolor to shift the mean value to neutral gray. Method=none skips 
-# this processing and only does the clip operation. If method=none 
-# and clipmode=together, then the result of the script will be equivalent 
-# to IM -contrast-stretch with a change in contrast, but no color change. 
-# The default=gamma.
+# -recolor (-color-matrix) to shift the mean value to neutral gray. 
+# Method=none skips this processing and only does the clip operation. 
+# If method=none and clipmode=together, then the result of the script will 
+# be equivalent to IM -contrast-stretch with a change in contrast, but no 
+# color change. The default=gamma.
 # 
 # -c clipmode ... CLIPMODE specifies whether to clip the channels 
 # in unison or independently. The choices are: together (t) or 
@@ -291,6 +291,13 @@ if [ "$ngray" = "" ]; then
 	ngray=$mean
 fi
 
+# set up -recolor or -color-matrix
+if [ "$im_version" -lt "06060100" ]; then
+	process="-recolor"
+else
+	process="-color-matrix"
+fi
+	
 #echo ""
 # process colorbalance
 if [ "$method" != "none" ]; then
@@ -329,7 +336,7 @@ if [ "$method" != "none" ]; then
 	fi
 	
 	if [ "$method" = "recolor" ]; then 
-		convert $tmpA1 -recolor "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $tmpA1
+		convert $tmpA1 $process "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $tmpA1
 		convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
 		convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
 		convert $tmpA1 -colorspace RGB -channel B -separate $tmpB1

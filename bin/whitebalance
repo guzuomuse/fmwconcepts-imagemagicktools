@@ -168,8 +168,8 @@ trap "rm -f $tmpA $tmpB $tmp0; exit 1" 1 2 3 15
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
 	: ' Do Nothing '
-	else
-		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+else
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
 [ "$coords" = "" -a "$usercolor" = "" ] && errMsg "--- EITHER A COORDINATE OR A COLOR MUST BE SPECIFIED ---"
@@ -226,8 +226,19 @@ else
 	bluefrac=`echo "scale=3; $rblue / $ublue" | bc`
 fi
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
+# set up -recolor or -color-matrix
+if [ "$im_version" -lt "06060100" ]; then
+	process="-recolor"
+else
+	process="-color-matrix"
+fi
+
 # transform image color
-convert $tmpA -recolor "$redfrac 0 0 0 $greenfrac 0 0 0 $bluefrac" $outfile
+convert $tmpA $process "$redfrac 0 0 0 $greenfrac 0 0 0 $bluefrac" $outfile
 exit 0
 
 
