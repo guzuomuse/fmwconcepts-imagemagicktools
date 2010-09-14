@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/22/2009 .......... revised 8/22/2009
+# Developed by Fred Weinhaus 8/22/2009 .......... revised 6/7/2010
 #
 # USAGE: camerablur [-t type] [-a amount] [-r rotation] [-m method] infile outfile
 # USAGE: camerablur [-h or -help]
@@ -30,12 +30,13 @@
 # 1D sinc function depending upon the direction of the motion. The lens
 # defocus filter in the frequency domain is just a jinc function. The user
 # specifies the parameters needed to create those functions directly as
-# images. An explicit filter image is not input to the script. Then it will
-# be multiplied by the Fourier transform of the image created with +fft and
-# the results will then be returned to the spatial domain via the inverse
-# Fourier transform using +ift. Any alpha channel on the filter will be
-# removed automatically before processing. If the image has an alpha channel
-# it will not be processed, but simply copied from the input to the output.
+# images. An explicit filter image is not input to the script. The internally
+# generated filter will then be multiplied by the Fourier transform of the
+# image created with +fft and the results will then be returned to the spatial
+# domain via the inverse Fourier transform using +ift. Any alpha channel on
+# the filter will be removed automatically before processing. If the image has
+# an alpha channel it will not be processed, but simply copied from the input
+# to the output.
 # 
 # OPTIONS: 
 # 

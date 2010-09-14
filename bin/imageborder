@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/23/2009 .......... revised 4/27/2009
+# Developed by Fred Weinhaus 4/23/2009 .......... revised 7/20/2010
 # 
-# USAGE: imageborder [-s size] [-b blurring] [-m mixcolor] [-p percent] [-r rimcolor] [-t thickness] [-e effect] infile outfile
+# USAGE: imageborder [-s size] [-b blurring] [-m mixcolor] [-p percent] [-r rimcolor] [-t thickness] [-e effect] [-f framebevel] [-c contrast] infile outfile
 # USAGE: imageborder [-h or -help]
 # 
 # OPTIONS:
@@ -18,7 +18,11 @@
 #                           border; any valid IM color is allowed; default=white
 # -t      thickness         rim thickness; integer>=0; default=1
 # -e      effect            image border effect; choices are edge, mirror, 
-#                           magnify, tile, random, dither or average; default=edge
+#                           magnify, tile, random, dither, average; default=edge
+# -f      framebevel        frame bevel type to apply; choices are: innerbevel, 
+#                           outerbevel or splitbevel. The default is no bevel 
+# -c      contrast          contrast percent for bevels; 0<=integer<=100; 
+#                           default=50
 # 
 ###
 # 
@@ -60,7 +64,7 @@
 # original image. Values are integers>=0. The default=1.
 # 
 # -e effect ... EFFECT specifies the type of image border effect to use.
-# The choices are edge, mirror, magnify, tile or random. If edge is
+# The choices are edge, mirror, magnify, tile, random or bevel. If edge is
 # specified, then the top, right, bottom and left row/column of the image
 # will simply be extended by the size parameters to create the image
 # border. If mirror is specified, then the outer size pixels from the
@@ -72,6 +76,13 @@
 # created from a non-random 32x32 dithered pattern. If average is specified, 
 # then the border will be created from the average color of the whole image.
 # The default is edge.
+# 
+# -f framebevel ... FRAMEBEVEL is the type of bevel to apply over the effect. 
+# The choices are: outer (i.e. raised), inner (i.e. depressed) or 
+# split (half and half). The default is no bevel.
+# 
+# -c contrast ... CONTRAST percent for innerbevel or outerbevel. Values are
+# integers between 0 and 100. The default=50.
 # 
 # NOTE: Requires IM 6.3.5-4 or higher due to the use of -distort SRT
 # 
@@ -89,7 +100,9 @@ mixcolor="white"	# mixing color
 percent=30			# mixing percent 0<=percent<=100
 rimcolor="white"	# rim color
 thickness=1			# rim thickness >= 0
-effect="edge"		# virtual-pixel: edge, mirror, magnify, tile, random
+effect="edge"		# virtual-pixel: edge, mirror, magnify, tile, random, innerbevel, outerbevel, splitbevel
+framebevel=""       # frame bevel to apply; outer, inner or split
+contrast=50			# innerbevel and outerbevel contrast
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -137,7 +150,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 16 ]
+elif [ $# -gt 20 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -211,11 +224,34 @@ else
 					   errorMsg="--- INVALID EFFECT SPECIFICATION ---"
 					   checkMinus "$1"
 					   # test type values
-					   effect="$1"
+					   effect=`echo "$1" | tr "[:upper:]" "[:lower:]"`
 					   case "$effect" in
 							edge|mirror|tile|random|magnify|dither|average) ;; # do nothing - valid type
 							*)  errMsg "--- EFFECT=$effect IS NOT A VALID VALUE ---" ;;
 					   esac
+					   ;;
+				-f)    # get framebevel
+					   shift  # to get the next parameter - type
+					   # test if parameter starts with minus sign
+					   errorMsg="--- INVALID FRAMEBEVEL SPECIFICATION ---"
+					   checkMinus "$1"
+					   # test type values
+					   framebevel=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$framebevel" in
+							outer|inner|split) ;; # do nothing - valid type
+							*)  errMsg "--- FRAMEBEVEL=$framebevel IS NOT A VALID VALUE ---" ;;
+					   esac
+					   ;;
+				-c)    # get contrast
+					   shift  # to get the next parameter - radius,sigma
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID CONTRAST SPECIFICATION ---"
+					   checkMinus "$1"
+					   contrast=`expr "$1" : '\([0-9]*\)'`
+					   [ "$contrast" = "" ] && errMsg "--- CONTRAST=$contrast MUST BE A NON-NEGATIVE INTEGER ---"
+					   testA=`echo "$contrast < 0" | bc`
+					   testB=`echo "$contrast > 100" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- CONTRAST=$contrast MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -262,15 +298,19 @@ if [ "$size" = "" ]; then
 	hsize=$size
 fi
 
+# get input image size
+wd=`convert $infile -ping -format "%w" info:`
+ht=`convert $infile -ping -format "%h" info:`
+
 # set output image size
-ww=`convert $tmpA -ping -format "%[fx:w+2*$wsize]" info:`
-hh=`convert $tmpA -ping -format "%[fx:h+2*$hsize]" info:`
+ww=`convert xc: -format "%[fx:$wd+2*$wsize]" info:`
+hh=`convert xc: -format "%[fx:$ht+2*$hsize]" info:`
 
 # set magnification
 if [ "$effect" = "magnify" ]; then
 	effect="edge"
-	xmag=`convert $tmpA -ping -format "%[fx:$ww/w]" info:`
-	ymag=`convert $tmpA -ping -format "%[fx:$hh/h]" info:`
+	xmag=`convert xc: -format "%[fx:$ww/$wd]" info:`
+	ymag=`convert xc: -format "%[fx:$hh/$ht]" info:`
 else
 	xmag=1
 	ymag=1
@@ -300,12 +340,43 @@ fi
 
 
 # process the image
-convert $tmpA \
+if [ "$framebevel" != "inner" -a "$framebevel" != "outer" -a "$framebevel" != "split" ]; then 
+	convert $tmpA \
+		\( -clone 0 $blurring1 $colorization1 \
+			-set option:distort:viewport ${ww}x${hh}-${wsize}-${hsize} \
+			$backgroundcoloring -virtual-pixel $effect \
+			-distort SRT "0,0 $xmag,$ymag 0" $blurring2 $colorization2 \) \
+		\( -clone 0 -bordercolor $rimcolor -border $thickness \) \
+		-delete 0 -gravity center -compose over -composite \
+		$outfile
+else
+	# convert contrast and transparency to fraction
+	contr1=`convert xc: -format "%[fx:$contrast-100]" info:`
+	# specify frame arguments for each kind of bevel
+	if [ "$framebevel" = "outer" ]; then
+		wsize2=$wsize
+		hsize2=0
+	elif [ "$framebevel" = "inner" ]; then
+		hsize2=$hsize
+		wsize2=0
+	elif [ "$framebevel" = "split" ]; then
+		wsize2=`convert xc: -format "%[fx:round(0.5*$wsize)]" info:`
+		hsize2=`convert xc: -format "%[fx:round(0.5*$hsize)]" info:`
+	fi
+
+	convert $tmpA \
 	\( -clone 0 $blurring1 $colorization1 \
-	-set option:distort:viewport ${ww}x${hh}-${wsize}-${hsize} \
-	$backgroundcoloring -virtual-pixel $effect \
-	-distort SRT "0,0 $xmag,$ymag 0" $blurring2 $colorization2 \) \
-	\( -clone 0 -bordercolor $rimcolor -border $thickness \) \
+		-set option:distort:viewport ${ww}x${hh}-${wsize}-${hsize} \
+		$backgroundcoloring -virtual-pixel $effect \
+		-distort SRT "0,0 $xmag,$ymag 0" $blurring2 $colorization2 \) \
+	\( -clone 0 -shave ${thickness}x${thickness} -bordercolor $rimcolor -border $thickness \) \
 	-delete 0 -gravity center -compose over -composite \
+	-size ${wd}x${ht} xc:"gray(50%)" \
+	\( -clone 1 -frame ${wsize}x${hsize}+${wsize2}+${hsize2} \
+		-auto-level -black-threshold 25% -white-threshold 75% \
+		-brightness-contrast 0,${contr1}% -clone 1 -gravity center -composite \) \
+	-delete 1 -compose hardlight -composite \
 	$outfile
+fi
+
 exit 0

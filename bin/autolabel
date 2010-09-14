@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/12/2009 .......... revised 12/12/2009
+# Developed by Fred Weinhaus 12/12/2009 .......... revised 8/19/2010
 # 
 # USAGE: autolabel -s size -t text [-m mode] [-b buffer] [-p pointsize] [-f font] [-r rcolor] [-c color] [-u undercolor] infile outfile
 # USAGE: autolabel [-h or -help]
@@ -16,7 +16,7 @@
 #                           default=0
 # -p      pointsize         text pointsize; integer>0; default will be 
 #                           determined from textbox width
-# -f      font              font name or path to font file; default=Helvetica
+# -f      font              font name or path to font file; default=Arial
 # -r      rcolor            reference color for determining best textbox 
 #                           location; default=white
 # -c      color             text color; any valid IM color specification;
@@ -69,7 +69,7 @@
 # determined from the textbox width, height or widthxheight.
 # 
 # -f font ... FONT is the text font or path to the font file. The default is 
-# Helvetica.
+# Arial.
 # 
 # -r rcolor ... RCOLOR is the reference color to use to locate a textbox sized 
 # region in the image which is closest in color for placing the text. Any valid 
@@ -98,7 +98,7 @@ pointsize=""			# pointsize
 rcolor="white"			# reference color for matching
 color=""				# text color; default black or white depending upon grayscale
 ucolor="none"			# text undercolor; default transparent
-font="Helvetica"		# font name or path to font
+font="Arial"			# font name or path to font
 mode="label"			# label or caption
 text=""
 
@@ -171,12 +171,10 @@ else
 					   hh=`echo "$size" | cut -dx -f2`
 					   if [ "$ww" != "" ]; then
 					   		ww1=`expr "$ww" : '\([0-9]*\)'`
-			echo "ww=$ww; hh=$hh; ww1=$ww1; hh1=$hh1"
 					   		[ "$ww1" = "" -o "$ww1" = "0" ] && errMsg "--- WSIZE=$ww1 MUST BE A POSITIVE INTEGER VALUE (with no sign) ---"
 					   fi
 					   if [ "$hh" != "" ]; then 
 					   		hh1=`expr "$hh" : '\([0-9]*\)'`
-			echo "ww=$ww; hh=$hh; ww1=$ww1; hh1=$hh1"
 					   		[ "$hh1" = "" -o "$hh1" = "0" ] && errMsg "--- HSIZE=$hh1 MUST BE A POSITIVE INTEGER VALUE (with no sign) ---"
 					   fi
 					   ;;
@@ -365,9 +363,17 @@ hhp=`convert xc: -format "%[fx:$hh+2*$buffer]" info:`
 ww10=`convert xc: -format "%[fx:ceil($wwp/10)]" info:`
 hh10=`convert xc: -format "%[fx:ceil($hhp/10)]" info:`
 
+# get im version where -subimage-search introduced for compare
+if [ "$im_version" -ge "06060305" ]; then
+	searching="-subimage-search"
+else
+	searching=""
+fi
+
 # process scaled image for match
 convert $tmpA1 -scale 10% $tmpA3
-data=`compare -metric rmse $tmpA3 \
+
+data=`compare -metric rmse $searching $tmpA3 \
 	\( -size ${ww10}x${hh10} xc:"$rcolor" \) null: 2>&1 |\
 	tr -cs ".0-9\n" " "`
 
@@ -383,7 +389,7 @@ xxs=`convert xc: -format "%[fx:max(0,10*$xxm10-2*$ww10)]" info:`
 yys=`convert xc: -format "%[fx:max(0,10*$yym10-2*$hh10)]" info:`
 
 # process full res subsection for match with padded window
-datasub=`compare -metric rmse $tmpA1[${wws}x${hhs}+${xxs}+${yys}] \
+datasub=`compare -metric rmse $searching $tmpA1[${wws}x${hhs}+${xxs}+${yys}] \
 	\( -size ${wwp}x${hhp} xc:"$rcolor" \) null: 2>&1 |\
 	tr -cs ".0-9\n" " "`
 
@@ -399,7 +405,6 @@ yym=`convert xc: -format "%[fx:$yys+$yysm]" info:`
 # compute text area offset including pad correction
 xxmp=`convert xc: -format "%[fx:$xxm+$buffer]" info:`
 yymp=`convert xc: -format "%[fx:$yym+$buffer]" info:`
-
 
 # write text onto image at match location corrected for pad
 convert $tmpA1 $tmpA2 -geometry +${xxmp}+${yymp} \

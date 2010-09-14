@@ -1,9 +1,13 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/31/2008 .......... revised 5/20/2010
+# Developed by Fred Weinhaus 3/31/2008 .......... revised 6/24/2010
+# Added wedge-top and wedge-bottom effects ...... revised 6/24/2010
+# Revised InnerBevel and Round styles ............revised 6/24/2010
+# Added Size Argument ........................... revised 6/18/2010
+# Added InnerBevel and Round styles ..............revised 6/17/2010
 # Enhancement provided by Aditya Naik  .......... revised 5/16/2010
 #
-# USAGE: texteffect -t "some text" [-f font] [-p pointsize] [-s style] [-e effect] [-l lineweight] [-d distortion] [-r rotation] [-x excess-area] [-c text-color(s)] [-o outline-color] [-b background-color] [-u under-color] [-g glow-shadow-color] [-m smudge] [-w wavecycles] [-a arc-angle] [-A gradient-angle] [infile] outfile
+# USAGE: texteffect -t "some text" [-f font] [-p pointsize] [-S size] [-s style] [-e effect] [-l lineweight] [-d distortion] [-r rotation] [-x excess-area] [-c text-color(s)] [-o outline-color] [-b background-color] [-u under-color] [-g glow-shadow-color] [-m smudge] [-w wavecycles] [-a arc-angle] [-A gradient-angle] [-D distance] [-R rounding] [infile] outfile
 # USAGE: texteffect [-h or -help]
 #
 # OPTIONS:
@@ -11,15 +15,21 @@
 # -t      "some text"			text to use; enclose in double quotes
 # -f      font					fontname; use bold/italic font to make bold/italic;
 #                               default=Arial
-# -p      pointsize				pointsize for font; default=48
+# -p      pointsize				pointsize for font; default=48; 
+#                               size will supercedes pointsize
+# -S      size					approximate width or height of text image;
+#                               expressed as WIDTHx or xHEIGHT; but not both; 
+#                               default is unspecified in favor of pointsize; 
+#                               size will supercedes pointsize
 # -s      style         		style=plain,outline,glow,softshadow,hardshadow,stamp,
-#                               bevel,antibevel; default=plain
+#                               bevel,antibevel,innerbevel,roundbevel; default=plain
 # -i      italic                italic slant angle in degrees; -45<=float<=45; default=0
 # -e      effect        		effect=normal,arc-top,arc-bottom,arch-top,arch-bottom,
 #                       		bulge,bulge-top,bulge-bottom,concave,concave-top,concave-bottom,
 #                       		convex,convex-top,convex-bottom,pinch,pinch-top,pinch-bottom,
 #                       		wave-top,wave-bottom,wedge_right,wedge-top-right,wedge-bottom-right,
-#                       		wedge-left,wedge-top-left,wedge-bottom-left; default=normal
+#                       		wedge-left,wedge-top-left,wedge-bottom-left,wedge-top,wedge-bottom; 
+#                               default=normal
 # -l      lineweight			line thickness in pixels; float>0; default=1
 # -d      distortion			distortion amount; 0<=float<=1; default=0.5
 # -r      rotation				rotation angle; -180<=float<=180; default=0
@@ -39,6 +49,10 @@
 # -a      arc-angle             angle for arc; 0<=float<=360; default=60
 # -A      gradient-angle        angle for gradient; 0<=float<=360 or nw,ne,se,sw for diagonal; 
 #                               default=90
+# -D      distance              innerbevel distance from border of character; 
+#                               integer>0; default will have bevel peak in middle 
+#                               of character
+# -R      rounding              rounding effect for roundbevel; float>0; default=3
 #
 # infile                        if infile is provided, it represents a tile pattern image that 
 #                               will be used in place of the text color.
@@ -48,12 +62,14 @@
 # 
 # PURPOSE: To convert text to an image after applying various effects, styling and color.
 # 
-# DESCRIPTION: TEXTEFFECT convert text to an image after applying various effects, 
-# styling and color. Effects include: normal, arc-top, arc-bottom, arch-top, arch-bottom,
-# bulge, bulge-top, bulge-bottom, concave, concave-top, concave-bottom, convex, convex-top, 
-# convex-bottom, pinch, pinch-top, pinch-bottom, wave-top, wave-bottom, wedge-top, wedge-top-right, 
-# wedge-bottom-right, wedge-left, wedge-top-left and wedge-bottom-left. Styles include: 
-# plain, outline, glow, hardshadow, softshadow, bevel, antibevel, and stamp.
+# DESCRIPTION: TEXTEFFECT convert text to an image after applying various
+# effects, styling and color. Effects include: normal, arc-top, arc-bottom,
+# arch-top, arch-bottom, bulge, bulge-top, bulge-bottom, concave, concave-top,
+# concave-bottom, convex, convex-top, convex-bottom, pinch, pinch-top,
+# pinch-bottom, wave-top, wave-bottom, wedge-top, wedge-top-right,
+# wedge-bottom-right, wedge-left, wedge-top-left, wedge-bottom-left, 
+# wedge-top and wedge-bottom. Styles include: plain, outline, glow, hardshadow, 
+# softshadow, bevel, antibevel, stamp, innerbevel, roundbevel.
 # 
 # 
 # ARGUMENTS: 
@@ -67,21 +83,33 @@
 #
 # -p pointsize ... POINTSIZE is the desired pointsize for the font. The output 
 # image will be generated to the size consistent with this pointsize and any 
-# padding you apply. The default is 48.
+# padding you apply. The default is 48. If size is specified, it will 
+# superceded the pointsize.
 # 
-# -s style ... STYLE is the style of the text. The choices are plain, outline, 
-# glow and shadow. Plain is just colored text with no outline. Outline is text 
-# that has an outline or border around it of user specified thickness and presumably 
-# of a different color. Glow has an outline and a glow effect. Both shadows have an 
-# outline and a shadow effect (darkening) on the SouthEast side. You may make the 
-# outline color the same as the text or the  same as the glow/shadow or even a different 
-# color. Stamp is similar to hardshadow, but has the darkening on the NorthWest side 
-# in order to make a stamped or indented effect. Bevel has brightening on the NorthWest 
-# and darkening on the SouthEast. Antibevel is the opposite with brightening on the 
-# SouthEast and darkening on the NorthWest. Bevel and antibevel allow both a line weight 
-# and smudge to soften the style. Plain and outline allow an undercolor. The others do not. 
+# -S size ... SIZE (approximate) of text image. The choices are WIDTHx or 
+# xHEIGHT, but not both. The default is unspecified in favor of pointsize. 
+# SIZE and POINTSIZE may not be used simultaneously. If size is specified, 
+# it will superceded the pointsize. Using WIDTHx seems to work out a bit 
+# better than xHEIGHT.
+# 
+# -s style ... STYLE is the style of the text. The choices are plain, outline,
+# glow, softshadow, hardshadow, stamp, bevel, antibevel, innerbevel and roundbevel.
+# Plain is just colored text with no outline. Outline is text that has an
+# outline or border around it of user specified thickness and presumably of a
+# different color. Glow has an outline and a glow effect. Both shadows have an
+# outline and a shadow effect (darkening) on the SouthEast side. You may make
+# the outline color the same as the text or the same as the glow/shadow or
+# even a different color. Stamp is similar to hardshadow, but has the
+# darkening on the NorthWest side in order to make a stamped or indented
+# effect. Bevel has brightening on the NorthWest and darkening on the
+# SouthEast. Antibevel is the opposite with brightening on the SouthEast and
+# darkening on the NorthWest. Bevel and antibevel allow both a line weight and
+# smudge to soften the style. Innerbevel and roundbevel have brightenning on the
+# Northwest side and darkening on the SouthEast side, but inside the text
+# rather than on the outside as in Bevel. The innerbevel amount is determined by 
+# the linewt. Plain and outline allow an undercolor. The others do not. 
 # The default is plain.
-# 
+#  
 # -i italic ... ITALIC is the font slant angle in degrees which creates an italic effect. 
 # Values are floats between -45 and 45. The default=0.
 # 
@@ -89,7 +117,7 @@
 # normal (no effect), arc-top, arc-bottom, arch-top, arch-bottom, bulge, bulge-top, 
 # bulge-bottom, concave, concave-top, concave-bottom, convex, convex-top, convex-bottom,  
 # pinch, pinch-top, pinch-bottom, wave-right, wedge-top-right, wedge-bottom-right, 
-# wedge-left, wedge-top-left and wedge-bottom-left.
+# wedge-left, wedge-top-left, wedge-bottom-left, wedge-top and wedge-bottom.
 # 
 # -l lineweight ... LINEWEIGHT is the outline border thickness in pixels. Values may be 
 # floats greater than 0. Glow and shadow styles require lineweights of atleast 1. 
@@ -146,6 +174,12 @@
 # the second color at the bottom. As the gradient-angle is increased, the gradient rotates 
 # clockwise. The default=90.
 # 
+# -D distance ... DISTANCE in pixels of inner bevel from border of character; 
+# Values are integers>0. The default will have bevel peak in middle of character.
+# 
+# -R rounding ... ROUNDING amount used to convert innerbevel into roundbevel. 
+# Values are floats>0. The default=3.
+# 
 # IMPORTANT: Please note that you can use only one instance of each argument. For 
 # example, you cannot have multiple styles (-s style) in the same command line, 
 # except as noted where some styles allow you to have an outline also, such as glow. 
@@ -158,7 +192,8 @@
 # 
 # NOTE: Some effects require the use of -fx and thus will be slower than the others. 
 # These include: the variations on bulge, concave, convex and pinch for IM versions 
-# prior to 6.4.3-7. The arc effect requires IM 6.3.5-5
+# prior to 6.4.3-7. The arc effect requires IM 6.3.5-5. The innerbevel and 
+# roundbevel require IM 6.5.9-1.
 # 
 # Thanks to Aditya Naik for improvments on the techniques for generating the 
 # concave, convex, pinch and bulge effects.
@@ -175,6 +210,7 @@ text=""							# trap for no text
 font="Arial"					# -f font: use bold or italic font also
 width=256						# -w approx width of text
 point=48						# -p point size
+size=""							# -S text image size (approx) as width or height
 tc="skyblue"					# -t text color
 oc="black"						# -o outline color
 bc="white"						# -b background color (or none for transparent)
@@ -187,10 +223,12 @@ effect="normal"					# -e effect:
 distort=0.5						# -d distortion amount
 cycles=1.0						# -w number of wave cycles
 arcangle=60						# -a angle for arc
-gradangle=90					# -a angle for gradient
+gradangle=90					# -A angle for gradient
 pad=10							# -x excess area (background) pad
 smudge=3.0						# -m smudge glow/shadow
 rotation=0						# -r rotation angle
+distance=""						# -D innerbevel distance
+rounding=3						# -R rounding for roundbevel
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -238,7 +276,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 37 ]
+elif [ $# -gt 43 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -268,6 +306,17 @@ else
 					   pointtestA=`echo "$point < 0" | bc`
 					   [ $pointtestA -eq 1 ] && errMsg "--- POINTSIZE=$point MUST BE A POSITIVE INTEGER ---"
 					   ;;
+				-S)    # get size
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   size1=`expr "$1" : '\(x[0-9][0-9]*\)'`
+					   size2=`expr "$1" : '\([0-9][0-9]*x\)'`				   
+					   [ "$size1" = "" -a "$size2" = "" ] && errMsg "--- SIZE=$size MUST BE A NON-NEGATIVE INTEGER EXPRESSED AS WIDTHx or xHEIGHT ---"
+					   [ "$size1" = "" ] && size=$size2
+					   [ "$size2" = "" ] && size=$size1
+					   ;;
 				-s)    # get  style
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
@@ -283,6 +332,8 @@ else
 					   		stamp) ;;
 					   		bevel) ;;
 					   		antibevel) ;;
+					   		innerbevel) ;;
+					   		roundbevel) ;;
 					   		*) errMsg "--- STYLE=$style IS AN INVALID VALUE ---" 
 					   	esac
 					   ;;
@@ -329,6 +380,8 @@ else
 					   		wedge-top-right) ;;
 					   		wedge-bottom-left);;
 					   		wedge-bottom-right) ;;
+					   		wedge-top) ;;
+					   		wedge-bottom) ;;
 					   		*) errMsg "--- EFFECT=$effect IS AN INVALID VALUE ---" 
 					   	esac
 					   ;;
@@ -423,7 +476,7 @@ else
 					   cycles=`expr "$1" : '\([.0-9]*\)'`
 					   [ "$cycles" = "" ] && errMsg "--- CYCLES=$cycles MUST BE A NON-NEGATIVE FLOAT ---"
 					   cyclestestA=`echo "$cycles < 0" | bc`
-					   [ $cyclestestA -eq 1 ] && errMsg "--- SMUDGE=$cycles MUST BE A POSITIVE INTEGER ---"
+					   [ $cyclestestA -eq 1 ] && errMsg "--- CYCLES=$cycles MUST BE A POSITIVE FLOAT ---"
 					   ;;
 				-a)    # get arcangle
 					   shift  # to get the next parameter
@@ -449,6 +502,26 @@ else
 						   angletestB=`echo "$gradangle > 360" | bc`
 						   [ $angletestA -eq 1 -o $angletestB -eq 1 ] && errMsg "--- GRADIENTANGLE=$gradangle MUST BE A FLOAT BETWEEN 0 AND 360 ---"
 					   fi
+					   ;;
+				-D)    # get distance
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DISTANCE SPECIFICATION ---"
+					   checkMinus "$1"
+					   distance=`expr "$1" : '\([0-9]*\)'`
+					   [ "$distance" = "" ] && errMsg "--- DISTANCE=$distance MUST BE A NON-NEGATIVE INTEGER ---"
+					   distancetestA=`echo "$distance < 0" | bc`
+					   [ $distancetestA -eq 1 ] && errMsg "--- DISTANCE=$distance MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-R)    # get rounding
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ROUNDING SPECIFICATION ---"
+					   checkMinus "$1"
+					   rounding=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$rounding" = "" ] && errMsg "--- ROUNDING=$rounding MUST BE A NON-NEGATIVE FLOAT ---"
+					   roundingtestA=`echo "$rounding < 0" | bc`
+					   [ $roundingtestA -eq 1 ] && errMsg "--- ROUNDING=$rounding MUST BE A POSITIVE FLOAT ---"
 					   ;;
 		   		-t)	   # get text
 					   shift  # to get the next parameter
@@ -491,10 +564,12 @@ fi
 
 tmpA="$dir/texteffect_0_$$.mpc"
 tmpB="$dir/texteffect_0_$$.cache"
-tmp0="$dir/texteffect_0_$$.miff"
-tmp1="$dir/texteffect_1_$$.miff"
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 1" 1 2 3 15
+tmpA0="$dir/texteffect_00_$$.mpc"
+tmpB0="$dir/texteffect_00_$$.cache"
+tmpA1="$dir/texteffect_11_$$.mpc"
+tmpB1="$dir/texteffect_11_$$.cache"
+trap "rm -f $tmpA $tmpB $tmpA $tmpB $tmpA0 $tmpB0 $tmpA1 $tmpB1 text_label.txt; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmpA $tmpB $tmpA0 $tmpB0 $tmpA1 $tmpB1 text_label.txt; exit 1" 1 2 3 15
 
 if [ "$infile" != "" ]
 	then
@@ -510,7 +585,13 @@ fi
 # get IM version
 im_version=`convert -list configure | \
 	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
-
+	
+# test acceptible versions for arc, innerbevel and roundbevel
+[ "$effect" = "arc-top" -a "$im_version" -lt "06030505" ] && errMsg "--- ARC EFFECT REQUIRES IM 6.3.5-5 OR HIGHER ---"
+[ "$effect" = "arc-bottom" -a "$im_version" -lt "06030505" ] && errMsg "--- ARC EFFECT REQUIRES IM 6.3.5-5 OR HIGHER ---"
+[ "$effect" = "innerbevel" -a "$im_version" -lt "06050901" ] && errMsg "--- INNERBEVEL EFFECT REQUIRES IM 6.5.9-1 OR HIGHER ---"
+[ "$effect" = "roundbevel" -a "$im_version" -lt "06050901" ] && errMsg "--- ROUNDBEVEL EFFECT REQUIRES IM 6.5.9-1 OR HIGHER ---"
+	
 # make sure glow and shadow have at least one pixel outline
 [ "$style" = "glow" -o "$style" = "shadow" ] && linewt=`convert xc: -format "%[fx:$linewt/3]" info:`
 
@@ -564,13 +645,51 @@ fi
 
 
 # get dimensions for background image xc:
-convert -background "$bc" \
-	-fill "$tc1" $stroke -font $font -pointsize $point \
-	-gravity center label:"$text" \
-	-trim -bordercolor "$bc" -border 10 +repage $tmp0
-	wd=`identify -format %w $tmp0`
-	ht=`identify -format %h $tmp0`
-	dim="${wd}x${ht}"
+if [ "$size" = "" ]; then
+	dim=`convert -background "$bc" \
+			-fill "$tc1" $stroke -font $font -pointsize $point \
+			-gravity center label:"$text" \
+			-trim -bordercolor "$bc" -border 10 +repage \
+			-format "%wx%h" info:`
+	wd=`echo $dim | cut -dx -f 1`
+	ht=`echo $dim | cut -dx -f 2`
+elif [ "$size" != "" ]; then
+	test=`echo "$size" | tr "x" " " | wc -w`
+	[ $test -ne 1 ] && errMsg "--- WIDTH AND HEIGHT MAY NOT BE SPECIFIED TOGETHER ---"
+	width=`echo "$size" | cut -dx -f 1`
+	height=`echo "$size" | cut -dx -f 2`
+	if [ "$width" = "" ]; then
+		size=$(($height-10))
+		[ $size -lt 1 ] && errMsg "--- SIZE MUST BE GREATER THAN 10 ---"
+		size="x${size}"
+	elif [ "$height" = "" ]; then
+		size=$(($width-10))
+		[ $size -lt 1 ] && errMsg "--- SIZE MUST BE GREATER THAN 10 ---"
+		size="${size}x"
+	fi
+	if [ "$im_version" -lt "06060207" ]; then	
+		str=`convert -size "$size" -background "$bc" \
+				-fill "$tc1" $stroke -font $font \
+				-gravity center -debug annotate label:"$text" \
+				-trim -bordercolor "$bc" -border 10 +repage \
+				-verbose null: 2> text_label.txt`
+		dim=`echo "$str" | sed -n 's/^.*LABEL.*=>\([0-9]*x[0-9]*\).*$/\1/p' | tail -n 1`
+		wd=`echo "$dim" | cut -dx -f 1`
+		ht=`echo "$dim" | cut -dx -f 2`
+		point=`cat text_label.txt | \
+			sed -n 's/^.*[ ]*pointsize[ ]*\([0-9]*\)$/\1/p' | tail -n 1`
+	else
+		data=`convert -size "$size" -background "$bc" \
+			-fill "$tc1" $stroke -font $font \
+			-gravity center label:"$text" \
+			-trim -bordercolor "$bc" -border 10 +repage \
+			-format "%wx%hx%[label:pointsize]" info:`
+		wd=`echo "$data" | cut -dx -f 1`
+		ht=`echo "$data" | cut -dx -f 2`
+		dim="${wd}x${ht}"
+		point=`echo "$data" | cut -dx -f 3`
+	fi
+fi
 
 # separate text colors to get gradient colors if necessary
 tc1=`echo "${tc}-" | cut -d- -f1`
@@ -581,20 +700,20 @@ tc2=`echo "${tc}-" | cut -d- -f2`
 makeGradient1()
 	{
 	if [ "$gradangle" = "0" ]; then
-		convert -size $dim gradient:"$tc" $tmp1
+		convert -size $dim gradient:"$tc" $tmpA1
 	elif [ $testsq -eq 1 ]; then
 		convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
 			-distort SRT "$gradangle" \
 			-contrast-stretch 0 \) \
 			$operation1 $operation2 \
-			$tmp1
+			$tmpA1
 	else
 		convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
 			-distort SRT "$gradangle" \
 			-gravity center -crop ${wd}x${ht}+0+0 +repage \
 			-contrast-stretch 0 \) \
 			$operation1 $operation2 \
-			$tmp1
+			$tmpA1
 	fi
 	}
 	
@@ -622,7 +741,7 @@ makeGradient2()
 	gsin=`convert xc: -format "%[fx:sin($gradangle1*pi/180)]" info:`
 	gcos=`convert xc: -format "%[fx:cos($gradangle1*pi/180)]" info:`
 	if [ "$angle" = "0" ]; then
-		convert -size $dim gradient:"$tc" $tmp1
+		convert -size $dim gradient:"$tc" $tmpA1
 	elif [ $testsq -eq 1 ]; then
 		convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
 			\( -clone 0 -rotate 90 -evaluate multiply ${gsin} \) \
@@ -630,7 +749,7 @@ makeGradient2()
 			-delete 0 -compose plus -composite \
 			-contrast-stretch 0 \) \
 			$operation1 $operation2 $mirror \
-			$tmp1
+			$tmpA1
 	else
 		convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
 			\( -clone 0 -rotate 90 -evaluate multiply ${gsin} \) \
@@ -639,7 +758,7 @@ makeGradient2()
 			-gravity center -crop ${wd}x${ht}+0+0 +repage \
 			-contrast-stretch 0 \) \
 			$operation1 $operation2 $mirror \
-			$tmp1
+			$tmpA1
 	fi
 	}
 
@@ -706,7 +825,7 @@ elif [ "$infile" = "" -a "$tc2" != "" ]
 	else
 		makeGradient2
 	fi
-	fill="-tile $tmp1"
+	fill="-tile $tmpA1"
 else
 	# simple color
 	fill="-fill $tc1"
@@ -721,7 +840,7 @@ if [ "$style" = "plain" ]
 		-stroke none -undercolor $uc \
 		-font $font -pointsize $point \
 		-gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 	
 elif [ "$style" = "outline" -a "$uc" = "none" ]
 	then
@@ -732,7 +851,7 @@ elif [ "$style" = "outline" -a "$uc" = "none" ]
 		-font $font -pointsize $point \
 		-gravity center -annotate 0x${italic}+0+0 "$text" \
 		$fill -stroke none -gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "outline" -a "$uc" != "none" ]
 	then
@@ -742,7 +861,7 @@ elif [ "$style" = "outline" -a "$uc" != "none" ]
 		$stroke -undercolor $uc \
 		-font $font -pointsize $point \
 		-gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "glow" ]
 	then
@@ -756,7 +875,7 @@ elif [ "$style" = "glow" ]
 		-gravity center -annotate 0x${italic}+0+0 "$text" $channels -blur 0x$blur -write texteffect_tmp1.png \
 		$fill -strokewidth $linewt -stroke $oc \
 		-gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "softshadow" ]
 	then
@@ -770,7 +889,7 @@ elif [ "$style" = "softshadow" ]
 		-gravity center -annotate 0x${italic}+0+0 "$text" $channels -blur 0x$blur \
 		$fill -strokewidth $linewt -stroke $oc \
 		-gravity center -annotate 0x${italic}-${blur1}-${blur1} "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "hardshadow" ]
 	then
@@ -781,7 +900,7 @@ elif [ "$style" = "hardshadow" ]
 		-stroke none -font $font -pointsize $point \
 		-fill "$gc" -gravity center -annotate 0x${italic}+${linewt}+${linewt} "$text" \
 		$fill -gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "bevel" ]
 	then
@@ -794,7 +913,7 @@ elif [ "$style" = "bevel" ]
 		-fill white -gravity center -annotate 0x${italic}-${linewt}-${linewt} "$text" -blur 0x$blur \
 		-fill black -gravity center -annotate 0x${italic}+${linewt}+${linewt} "$text" -blur 0x$blur \
 		$fill -gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "antibevel" ]
 	then
@@ -807,7 +926,7 @@ elif [ "$style" = "antibevel" ]
 		-fill black -gravity center -annotate 0x${italic}-${linewt}-${linewt} "$text" -blur 0x$blur \
 		-fill white -gravity center -annotate 0x${italic}+${linewt}+${linewt} "$text" -blur 0x$blur \
 		$fill -gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
 elif [ "$style" = "stamp" ]
 	then
@@ -820,8 +939,38 @@ elif [ "$style" = "stamp" ]
 		-fill black -gravity center -annotate 0x${italic}-${linewt}-${linewt} "$text" -blur 0x$blur \
 		-fill white -gravity center -annotate 0x${italic}+${linewt}+${linewt} "$text" -blur 0x$blur \
 		$fill -gravity center -annotate 0x${italic}+0+0 "$text" \
-		$trimpad +repage $tmp0
+		$trimpad +repage $tmpA0
 
+elif [ "$style" = "innerbevel" -o "$style" = "roundbevel" ]
+	then
+	# no stroke and no undercolor
+	if [ "$style" = "roundbevel" ]; then
+		round="-blur 0x$rounding"
+		d1=-1
+		d2=1
+		leveling="-auto-level"
+	else
+		round=""
+		if [ "$distance" = "" ]; then
+			d1=-1
+			d2=1
+			leveling="-auto-level"
+		else
+			d1=$distance
+			d2=$distance
+			d3=$((1000*$distance))
+			leveling="-level 0,$d3"
+		fi
+	fi
+	convert -size $dim xc:none -fill white \
+		-stroke white -strokewidth $linewt \
+		-font $font -pointsize $point \
+		-gravity center -annotate 0x${italic}+0+0 "$text" \
+		-morphology Distance:$d1 Euclidean:$d2,1000 $leveling \
+		-shade 135x30 -auto-level +level 10x90% \
+		$fill -colorize 50% \
+		-modulate 100,150,100 $round \
+		$trimpad +repage -background "$bc" -flatten $tmpA0
 fi
 
 # computed parameters
@@ -832,8 +981,8 @@ fi
 a=`convert xc: -format "%[fx:1+$distort]" info:`
 b=`convert xc: -format "%[fx:-$distort]" info:`
 #d=`convert xc: -format "%[fx:1-$distort]" info:`
-width=`identify -format %w $tmp0`
-height=`identify -format %h $tmp0`
+width=`identify -format %w $tmpA0`
+height=`identify -format %h $tmpA0`
 w2=`convert xc: -format "%[fx:$width/2]" info:`
 h2=`convert xc: -format "%[fx:$height/2]" info:`
 sf=`convert xc: -format "%[fx:($w2+$h2)/2]" info:`
@@ -845,10 +994,6 @@ else
 fi
 xc=$w2
 yc=$h2
-
-# get im version
-im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
 
 if [ "$effect" = "wedge-right" ]
@@ -914,6 +1059,28 @@ elif [ "$effect" = "wedge-bottom-left" ]
 	else
 		coords="0,0 0,0  $width,0 $width,0  $width,$height $width,$height  0,$height 0,$hh4"
 	fi		
+elif [ "$effect" = "wedge-top" ]
+	then
+	# coordinates TL, TR, BR, BL
+	ww1=`convert xc: -format "%[fx:$distort*$w2]" info:`
+	ww2=`convert xc: -format "%[fx:$width-$distort*$w2]" info:`
+	if [ "$im_version" -lt "06030600" ]
+		then
+		coords="0,0 $width,0 $width,$height 0,$height   $ww1,0 $ww2,0 $width,$height 0,$height"
+	else
+		coords="0,0 $ww1,0  $width,0 $ww2,0  $width,$height $width,$height  0,$height 0,$height"
+	fi
+elif [ "$effect" = "wedge-bottom" ]
+	then
+	# coordinates TL, TR, BR, BL
+	ww4=`convert xc: -format "%[fx:$distort*$w2]" info:`
+	ww3=`convert xc: -format "%[fx:$width-$distort*$w2]" info:`
+	if [ "$im_version" -lt "06030600" ]
+		then
+		coords="0,0 $width,0 $width,$height 0,$height  0,0 $width,0 $ww3,$height $ww4,$height"
+	else
+		coords="0,0 0,0  $width,0 $width,0  $width,$height $ww3,$height  0,$height $ww4,$height"
+	fi
 fi
 
 if [ "$effect" = "arch-top" ]
@@ -981,28 +1148,37 @@ fi
 # process image depending upon effect
 if [ "$effect" = "normal" ]
 	then
-	convert $tmp0 -background "$bc" -trim -bordercolor "$bc" -border $pad \
-		$tmp0
+	convert $tmpA0 -background "$bc" -trim -bordercolor "$bc" -border $pad \
+		$tmpA0
 		
-elif [ "$effect" = "wedge-right" -o "$effect" = "wedge-left" -o "$effect" = "wedge-top-left" -o "$effect" = "wedge-top-right" -o "$effect" = "wedge-bottom-left" -o "$effect" = "wedge-bottom-right" ]
+elif [ "$effect" = "wedge-right" -o "$effect" = "wedge-left" -o "$effect" = "wedge-top-left" -o "$effect" = "wedge-top-right" -o "$effect" = "wedge-bottom-left" -o "$effect" = "wedge-bottom-right" -o "$effect" = "wedge-top" -o "$effect" = "wedge-bottom" ]
 	then
-	convert $tmp0 $vp -background $bc \
-		-distort perspective "$coords" \
+	if [ "$effect" = "wedge-top" -o "$effect" = "wedge-bottom" ]; then
+		if [ "$im_version" -ge "06050102" ]; then
+			distort="bilinearforward"
+		else
+			distort="perspective"
+		fi		
+	else
+		distort="perspective"
+	fi
+	convert $tmpA0 $vp -background $bc \
+		-distort bilinearforward "$coords" \
 		-background $bc -trim -bordercolor $bc -border $pad \
-		$tmp0
+		$tmpA0
 
 elif [ "$effect" = "arc-top" -o "$effect" = "arc-bottom" ]
 	then
-	convert $tmp0 $orient $vp -background $bc \
+	convert $tmpA0 $orient $vp -background $bc \
 		-distort arc "$params" \
 		-background $bc -trim -bordercolor $bc -border $pad \
-		$tmp0
+		$tmpA0
 
 elif [ "$effect" = "arch-top" -o "$effect" = "arch-bottom" -o "$effect" = "wave-top" -o "$effect" = "wave-bottom" ]
 	then
-	convert $tmp0 -background $bc -wave ${amp}x${wav} \
+	convert $tmpA0 -background $bc -wave ${amp}x${wav} \
 		-background $bc -trim -bordercolor $bc -border $pad \
-		$tmp0
+		$tmpA0
 
 elif [ "$effect" = "bulge" -o "$effect" = "pinch" -o "$effect" = "bulge-top" -o "$effect" = "bulge-bottom" -o "$effect" = "pinch-top" -o "$effect" = "pinch-bottom" ]
 	then
@@ -1012,10 +1188,10 @@ elif [ "$effect" = "bulge" -o "$effect" = "pinch" -o "$effect" = "bulge-top" -o 
 		# trim if the effect is concave or convex for top or bottom 
 		if [ "$effect" = "bulge-top" -o "$effect" = "bulge-bottom" -o "$effect" = "pinch-top" -o "$effect" = "pinch-bottom" ]
 		  then
-		  convert $tmp0 $vp -trim +repage $tmp0
+		  convert $tmpA0 $vp -trim +repage $tmpA0
 		fi
-		ww=`convert $tmp0 -format "%w" info:`
-		hh=`convert $tmp0 -format "%h" info:`
+		ww=`convert $tmpA0 -format "%w" info:`
+		hh=`convert $tmpA0 -format "%h" info:`
 		halfw=`convert xc: -format "%[fx:$ww/2]" info:`
 		# get new height to accomodate the transformation
 		# factor of 2 below should not be needed???
@@ -1024,33 +1200,33 @@ elif [ "$effect" = "bulge" -o "$effect" = "pinch" -o "$effect" = "bulge-top" -o 
 			then
 			fac=1.5
 			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity south -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 0 $b $a   $halfw $newhh" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		elif [ "$effect" = "bulge-bottom" -o "$effect" = "pinch-bottom" ]
 			then
 			fac=1.5
 			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity north -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 0 $b $a   $halfw 0" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		elif [ "$effect" = "bulge" -o "$effect" = "pinch" ]
 			then
 			fac=1.5
 			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity center -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 0 $b $a" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		fi				
 	else
-	convert $tmp0 $vp -background $bc \
+	convert $tmpA0 $vp -background $bc \
 		-monitor -fx \
 		"xd=(i-$xc); yd=(j-$yc); $rd ys=(yd/($a+$b*rd))+$yc; $result" \
 		-background $bc -trim -bordercolor $bc -border $pad \
-		$tmp0
+		$tmpA0
 	fi
 		
 elif [ "$effect" = "concave" -o "$effect" = "convex" -o "$effect" = "concave-top" -o "$effect" = "concave-bottom" -o "$effect" = "convex-top" -o "$effect" = "convex-bottom" ]
@@ -1061,11 +1237,11 @@ elif [ "$effect" = "concave" -o "$effect" = "convex" -o "$effect" = "concave-top
 		# trim if the effect is concave or convex for top or bottom 
 		if [ "$effect" = "concave-top" -o "$effect" = "concave-bottom" -o "$effect" = "convex-top" -o "$effect" = "convex-bottom" ]
 		  then
-		  convert $tmp0 $vp -trim +repage $tmp0
+		  convert $tmpA0 $vp -trim +repage $tmpA0
 		fi
 
-		ww=`convert $tmp0 -format "%w" info:`
-		hh=`convert $tmp0 -format "%h" info:`
+		ww=`convert $tmpA0 -format "%w" info:`
+		hh=`convert $tmpA0 -format "%h" info:`
 		halfw=`convert xc: -format "%[fx:$ww/2]" info:`
 		# get new height to accomodate the transformation
 		# factor of 2 below should not be needed???
@@ -1081,39 +1257,39 @@ elif [ "$effect" = "concave" -o "$effect" = "convex" -o "$effect" = "concave-top
 
 		if [ "$effect" = "convex-top" -o "$effect" = "concave-top" ]
 			then
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity south -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 $b 0 $a   $halfw $newhh" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		elif [ "$effect" = "convex-bottom" -o "$effect" = "concave-bottom" ]
 			then
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity north -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 $b 0 $a   $halfw 0" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		elif [ "$effect" = "convex" -o "$effect" = "concave" ]
 			then
 		    fac=1.25
 			newhh=`convert xc: -format "%[fx:$hh*$fac]" info:`
-			convert $tmp0 $vp -background $bc -filter lanczos \
+			convert $tmpA0 $vp -background $bc -filter lanczos \
 				-gravity center -extent ${ww}x${newhh} \
 				-distort barrelinverse "0 0 0 1   0 $b 0 $a" \
-				$trimpad $tmp0
+				$trimpad $tmpA0
 		fi				
 	else
-	convert $tmp0 $vp -background $bc \
+	convert $tmpA0 $vp -background $bc \
 		-monitor -fx \
 		"xd=(i-$xc); yd=(j-$yc); $rd ys=(yd/($a+$b*rd^2))+$yc; $result" \
-		$trimpad $tmp0
+		$trimpad $tmpA0
 	fi
 
 fi
 
 if [ "$rotation" != "0" -a "$rotation" != "0.0" -a "$rotation" != ".0" ]
 	then
-	convert $tmp0 -background "$bc" -rotate $rotation $outfile
+	convert $tmpA0 -background "$bc" -rotate $rotation $outfile
 else
-	convert $tmp0 $outfile
+	convert $tmpA0 $outfile
 fi
 
 exit 0

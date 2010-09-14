@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/22/2009 .......... revised 8/22/2009
+# Developed by Fred Weinhaus 8/22/2009 .......... revised 6/7/2010
 #
 # USAGE: cameradeblur [-t type] [-a amount] [-r rotation] [-n noise] [-m method] infile outfile
 # USAGE: cameradeblur [-h or -help]
@@ -31,7 +31,8 @@
 # defocus. The motion blur filter in the frequency domain is just an
 # optionally rotated 1D sinc function. The lens defocus filter in the
 # frequency domain is just a jinc function. The user specifies the parameters
-# needed to create those functions directly as images.An explicit filter image is not input to the script. Then it will
+# needed to create those functions directly as images. An explicit filter image 
+# is not input to the script. The internally generated filter will then 
 # be divided into the Fourier transform of the image created with +fft and
 # the results will then be returned to the spatial domain via the inverse
 # Fourier transform using +ift. Any alpha channel on the filter will be

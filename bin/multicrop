@@ -1,8 +1,10 @@
 #!/bin/bash
+#
+# Revised by Fred Weinhaus ...................... revised 8/24/2010
+# Revised by Anthony Thyssen to add -b option ... revised 8/24/2010
+# Developed by Fred Weinhaus 1/30/2010 .......... revised 7/7/2010
 # 
-# Developed by Fred Weinhaus 1/30/2010 .......... revised 5/3/2010
-# 
-# USAGE: multicrop [-c coords] [-f fuzzval] [-g grid] [-u unrotate] [-m mask] infile outfile
+# USAGE: multicrop [-c coords] [-b bcolor] [-f fuzzval] [-g grid] [-u unrotate] [-m mask] infile outfile
 # USAGE: multicrop [-h or -help]
 # 
 # OPTIONS:
@@ -10,6 +12,8 @@
 # -c          coords         pixel coordinate to extract background color; 
 #                            may be expressed as gravity value (NorthWest, etc)
 #                            or as "x,y" value; default is NorthWest=(0,0)
+# -b          bcolor         background color to use instead of option -c;
+#                            any valid IM color; default is to use option -c
 # -f          fuzzval        fuzz value for separating background color;
 #                            expressed as (integer) percent 0 to 100; 
 #                            default=0 (uniform color)
@@ -25,11 +29,11 @@
 # 
 ###
 # 
-# NAME: MUTICROP 
-#  
+# NAME: MULTICROP
+# 
 # PURPOSE: To crop and unrotate multiple images from a scanned image.
 # 
-# DESCRIPTION: MUTICROP crops and unrotates multiple images from a scanned image.
+# DESCRIPTION: MULTICROP crops and unrotates multiple images from a scanned image.
 # The images must be well separate so that background color shows between them. 
 # The process uses a floofill technique based upon a seed coordinate and a fuzz 
 # value to separate the individual images from the background of the scan. 
@@ -56,11 +60,16 @@
 # SouthWest or West) or as a pixel coordinate "x,y". The default is the 
 # upper left corner = NorthWest = "0,0".
 # 
-# -f fuzzval ... FUZZVAL is the fuzz amount specified as an integer percent 
-# value between 0 to 100 (without the % sign). # The correct choice of fuzz 
-# factor is very important. If too small, the images will not be separate. 
-# If too larger, parts of the outer area of the image containing similar 
-# colors will be lost and the image may be separated into multiple parts. 
+# -b bcolor ... BCOLOR is the background color to use for flood fill instead 
+# of extracting this color from the image. This is useful when an image has 
+# no borders with sub-images hard against the edges. Any valid IM color is 
+# allowed. The default is to use option -c.
+# 
+# -f fuzzval ... FUZZVAL is the fuzz amount specified as an integer percent
+# value between 0 to 100 (without the % sign). # The correct choice of fuzz
+# factor is very important. If too small, the images will not be separate.
+# If too larger, parts of the outer area of the image containing similar
+# colors will be lost and the image may be separated into multiple parts.
 # Typical values are probably between 5 and 20 percent. The default=10
 # 
 # -g grid ... GRID is the grid spacing for testing points in the input image 
@@ -97,8 +106,9 @@
 ######
 #
 
-# set default values; 
+# set default values 
 coords="0,0"			# initial coord for finding background color
+bcolor=""      			# initial background color
 fuzzval=10 				# fuzz amount in percent for making background transparent
 grid=10					# grid spacing in percent image
 mask=""					# view, save, output
@@ -148,7 +158,7 @@ if [ $# -eq 0 ]
 	echo ""
 	usage2
 	exit 0
-elif [ $# -gt 12 ]
+elif [ $# -gt 14 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -178,6 +188,13 @@ else
 				   checkMinus "$1"
 				   coords=$1
 				   # further testing done later
+				   ;;
+			-b)    # coords
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign
+				   errorMsg="--- INVALID COORDS SPECIFICATION ---"
+				   checkMinus "$1"
+				   bcolor=$1
 				   ;;
 			-g)    # grid
 				   shift  # to get the next parameter
@@ -223,6 +240,10 @@ else
 	outfile=$2
 fi
 
+# test if both bcolor and coords specified at the same time
+if [ "X$bcolor" != "X" -a "X$coods" != "X" ]; then
+  errMsg "--- BACKGROUND COLOR AND COODINATES CAN NOT BE USED TOGETHER ---"
+fi
 
 # test that infile provided
 [ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
@@ -264,24 +285,28 @@ height=`identify -ping -format "%h" $tmpA1`
 
 
 # get color at user specified location
-widthm1=`convert xc: -format "%[fx:$width-1]" info:`
-heightm1=`convert xc: -format "%[fx:$height-1]" info:`
-midwidth=`convert xc: -format "%[fx:round(($width-1))/2]" info:`
-midheight=`convert xc: -format "%[fx:round(($height-1))/2]" info:`
-coords=`echo "$coords" | tr "[:upper:]" "[:lower:]"`
-case "$coords" in
-	nw|northwest)	coords="0,0" ;;
-	n|north)		coords="$midwidth,0" ;;
-	ne|northeast)	coords="$widthm1,0" ;;
-	e|east)			coords="$widthm1,$midheight" ;;
-	se|southeast)	coords="$widthm1,$heightm1" ;;
-	s|south)		coords="$midwidth,$heightm1" ;;
-	sw|southwest)	coords="0,$heightm1" ;;
-	w|west)			coords="0,$midheight" ;;
-	[0-9]*,[0-9]*)	coords=$coords ;;
-	*)	errMsg "--- INVALID COORDS ---" ;;
-esac
-bgcolor=`convert $tmpA1 -format "%[pixel:u.p{$coords}]" info:`
+if [ "X$bgcolor" != "X" ]; then
+	coords="0,0"
+else
+	widthm1=`convert xc: -format "%[fx:$width-1]" info:`
+	heightm1=`convert xc: -format "%[fx:$height-1]" info:`
+	midwidth=`convert xc: -format "%[fx:round(($width-1))/2]" info:`
+	midheight=`convert xc: -format "%[fx:round(($height-1))/2]" info:`
+	coords=`echo "$coords" | tr "[:upper:]" "[:lower:]"`
+	case "$coords" in
+		''|nw|northwest) coords="0,0" ;;
+		n|north)         coords="$midwidth,0" ;;
+		ne|northeast)    coords="$widthm1,0" ;;
+		e|east)          coords="$widthm1,$midheight" ;;
+		se|southeast)    coords="$widthm1,$heightm1" ;;
+		s|south)         coords="$midwidth,$heightm1" ;;
+		sw|southwest)    coords="0,$heightm1" ;;
+		w|west)          coords="0,$midheight" ;;
+		[0-9]*,[0-9]*)   coords=$coords ;;
+		*)  errMsg "--- INVALID COORDS ---" ;;
+	esac
+	bgcolor=`convert $tmpA1 -format "%[pixel:u.p{$coords}]" info:`
+fi
 #echo "bgcolor=$bgcolor"
 
 
@@ -292,10 +317,11 @@ num=`convert xc: -format "%[fx:round(100/$grid) - 2]" info:`
 #echo "width=$width; height=$height; wg=$wg; hg=$hg; num=$num"
 
 
-# fill outside with transparency and rest with red
+# add a border, and flood fill from all edges inward
 convert $tmpA1 -fuzz ${fuzzval}% -fill none \
+	-bordercolor $bgcolor -border 1x1 \
 	-draw "matte $coords floodfill" \
-	-fill red +opaque none \
+	-shave 1x1 -fill red +opaque none \
 	$tmpA2
 
 if [ "$mask" = "view" ]; then

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 9/2/2007 .......... revised 8/20/2008
+# Developed by Fred Weinhaus 9/2/2007 .......... revised 6/15/2010
 #
 # USAGE: bcimage [-g] bri,con[,sat] infile outfile
 # USAGE: bcimage [-h or -help]
@@ -357,7 +357,7 @@ if [ "$sat" != "" -a "$colorspace" != "Gray" ]
 		convert $tmp00 -colorspace $colormodel -channel G -separate $tmp2
 		convert $tmp00 -colorspace $colormodel -channel B -separate $tmp3
 		convert $tmp2 -gamma $sgamma $tmp2p
-		convert $tmp0 -colorspace $colorspace $tmp1 -compose CopyRed -composite $tmp2p -compose CopyGreen -composite $tmp3 -compose CopyBlue -composite -colorspace RGB $tmp00
+		convert $tmp0 -colorspace $colormodel $tmp1 -compose CopyRed -composite $tmp2p -compose CopyGreen -composite $tmp3 -compose CopyBlue -composite -colorspace RGB $tmp00
 fi
 convert $tmp00 $outfile
 #

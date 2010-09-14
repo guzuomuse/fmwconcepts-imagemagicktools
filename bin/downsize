@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/24/2009 .......... revised 12/24/2009
+# Developed by Fred Weinhaus 12/24/2009 .......... revised 8/18/2010
 #
 # USAGE: downsize [-s size] [-t toler] [-c copy] infile outfile
 # USAGE: downsize [-help]
@@ -210,7 +210,7 @@ suffix=`echo $suffix | tr "[:lower:]" "[:upper:]"`
 
 # convert image to ftype and get filesize
 initsize=`convert $infile -ping -format "%b" info:`
-fullsize=`convert $tmpA1 ${ftype}:- | convert - -ping -format "%b" info:`
+fullsize=`convert $tmpA1 ${ftype}:- | convert - -ping -format "%b" info: | tr -d "[:alpha:]"`
 size2=`convert xc: -format "%[fx:$size*1000]" info:`
 
 # process image if actual size > desired size

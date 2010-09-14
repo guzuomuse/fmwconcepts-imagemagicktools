@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/2/2009 .......... revised 7/2/2009
+# Developed by Fred Weinhaus 4/2/2009 .......... revised 4/8/2009
 #
 # USAGE: nearestcolor [-c color] [-m mode] [-f fontname] [-p pointsize] [-l labelcolor] infile [outfile]
 # USAGE: nearestcolor [-h or -help]
@@ -10,7 +10,7 @@
 # -c      color			        reference color; any IM color specification; default=black
 # -m      mode                  mode to report color values; choices are 8bit or percent; 
 #                               default=8bit
-# -f      fontname				fontname or path-to-font-file; default=Helvetic
+# -f      fontname				fontname or path-to-font-file; default=Arial
 # -p      pointsize				pointsize for font; default=18
 # -l      labelcolor			color for label on output swatches; any IM color specification; 
 #                               default=white
@@ -45,7 +45,7 @@
 # display in the color swatches as well as to the terminal. The default is 8bit.
 # 
 # -f fontname ... FONTNAME is the desired font or path-to-font-file for the 
-# swatch labels. The default is Helvetica.
+# swatch labels. The default is Arial.
 #
 # -p pointsize ... POINTSIZE is the desired pointsize for the swatch labels. 
 # The default is 18.
@@ -67,7 +67,7 @@
 # set default values
 color="black"			
 mode="8bit"				# 8bit or percent
-fontname="Helvetica"
+fontname="Arial"
 point="18"
 labelcolor="white"
 
@@ -217,14 +217,24 @@ fi
 # IM 6.5.0.10 or higher to conform to new image matching via compare function
 im_version=`convert -list configure | \
 	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
-if [ "$im_version" -lt "06050010" ]
-	then
+if [ "$im_version" -lt "06050010" ]; then
 	errMsg "--- REQUIRES IM VERSION 6.5.0-10 OR HIGHER ---"
+elif [ "$im_version" -ge "060501010" ]; then
+	thresh="-dissimilarity-threshold 100%"
+else
+	thresh="-fuzz 1000000%"
+fi
+
+# get im version where -subimage-search introduced for compare
+if [ "$im_version" -ge "06060305" ]; then
+	searching="-subimage-search"
+else
+	searching=""
 fi
 
 # compare 1x1 pixel reference color image to infile and get returned information
-data=`compare -metric rmse -fuzz 1000000% $tmpA \( -size 1x1 xc:$color \) null: 2>&1`
-#echo "$data"
+data=`compare -metric rmse $thresh $searching $tmpA \( -size 1x1 xc:$color \) null: 2>&1`
+#echo "data=$data"
 
 # extract the coordinates of the closest matched pixel
 coords=`echo "$data" | cut -d\  -f4`

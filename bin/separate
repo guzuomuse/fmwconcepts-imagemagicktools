@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 2/25/2010 .......... 5/3/2010
+# Developed by Fred Weinhaus 2/25/2010 .......... 8/19/2010
 #
 # USAGE: separate [-m mode] [-g grid] [-t] [-v] [-l] [-b bgcolor] [-e exponent] infile outfile
 # USAGE: separate [-h or -help]
@@ -245,6 +245,16 @@ uniquecolors=`convert $tmpA1 -format "%k" info:`
 [ $uniquecolors -ne 2 ] && echo "--- IMAGE IS NOT BINARY ---"
 
 
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
+# get im version where -subimage-search introduced for compare
+if [ "$im_version" -ge "06060305" ]; then
+	searching="-subimage-search"
+else
+	searching=""
+fi
 
 
 # process image to get indices for each shape
@@ -255,11 +265,11 @@ if [ "$grid" = "" ]; then
 	graylvl=1
 	while [ $val -eq 0 -a $graylvl -ne 256 ]; do
 		# find white pixel and get its coords
-		result=`compare -metric pae -dissimilarity-threshold 1 \
+		result=`compare -metric pae -dissimilarity-threshold 1 $searching \
 			$tmpA1 -size 1x1 xc:white null: 2>&1`
 		val=`echo "$result" | cut -d\  -f 1`
 		coords=`echo "$result" | cut -d\  -f 4`
-	#	echo "val=$val; coords=$coords"
+#		echo "val=$val; coords=$coords"
 		[ $val -ne 0 ] && break
 	
 		# floodfill $tmpA2 with graylevel index at coords

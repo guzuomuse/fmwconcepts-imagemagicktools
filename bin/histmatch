@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 6/25/2009 .......... revised 12/21/2009
+# Developed by Fred Weinhaus 6/25/2009 .......... revised 8/14/2010
 #
 # USAGE: histmatch [-c colormode] [-s satmode] infile1 infile2 outfile
 # USAGE: histmatch [-h or -help]
@@ -340,6 +340,8 @@ if [ "$alpha" = "True" ]; then
 fi
 #echo "alpha=$alpha"
 
+# NOT CURRENTLY USED
+: <<COMMENT
 # test if infile2 is PseudoClass and RGB or Gray and if matte
 type2=`convert $tmpA2 -format '%r' info:`
 if [ "$type2" = "PseudoClassRGB" ]; then
@@ -354,6 +356,7 @@ else
 	reduction=""
 fi
 #echo "type2=$type2; reduction=$reduction"
+COMMENT
 
 # test if infiles are grayscale
 gray1="no"
@@ -388,26 +391,24 @@ if [ "$gray1" = "no" ]; then
 	fi	
 fi
 
-# convert infile2 to colormode if not already gray
-if [ "$gray2" = "no" ]; then
-	if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
-		convert $tmpA2 -colorspace Gray $tmpIA2
-	elif [ "$colormode" = "luminance" ]; then
-		convert $tmpA2 -colorspace Rec709Luma $tmpIA2
-	elif [ "$colormode" = "lightness" ]; then
-		convert $tmpA2 -colorspace HSL -channel B -separate $tmpIA2
-	elif [ "$colormode" = "brightness" ]; then
-		convert $tmpA2 -colorspace HSB -channel B -separate $tmpIA2
-	elif [ "$colormode" = "average" ]; then
-		convert $tmpA2 -colorspace OHTA -channel R -separate $tmpIA2
-	elif [ "$colormode" = "rgb" ]; then
-		convert $tmpA2 -colorspace RGB -channel R -separate $tmpRA2
-		convert $tmpA2 -colorspace RGB -channel G -separate $tmpGA2
-		convert $tmpA2 -colorspace RGB -channel B -separate $tmpBA2
-	fi
-	if [ "$satmode" != "" ]; then
-		convert $tmpA2 -colorspace $satmode -channel G -separate $tmpSA2
-	fi	
+# convert infile2 to colormod
+if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
+	convert $tmpA2 -colorspace Gray $tmpIA2
+elif [ "$colormode" = "luminance" ]; then
+	convert $tmpA2 -colorspace Rec709Luma $tmpIA2
+elif [ "$colormode" = "lightness" ]; then
+	convert $tmpA2 -colorspace HSL -channel B -separate $tmpIA2
+elif [ "$colormode" = "brightness" ]; then
+	convert $tmpA2 -colorspace HSB -channel B -separate $tmpIA2
+elif [ "$colormode" = "average" ]; then
+	convert $tmpA2 -colorspace OHTA -channel R -separate $tmpIA2
+elif [ "$colormode" = "rgb" ]; then
+	convert $tmpA2 -colorspace RGB -channel R -separate $tmpRA2
+	convert $tmpA2 -colorspace RGB -channel G -separate $tmpGA2
+	convert $tmpA2 -colorspace RGB -channel B -separate $tmpBA2
+fi
+if [ "$satmode" != "" ]; then
+	convert $tmpA2 -colorspace $satmode -channel G -separate $tmpSA2
 fi	
 
 

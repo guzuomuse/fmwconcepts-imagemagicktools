@@ -36,6 +36,10 @@ bcimage --- Changes the brightness, contrast and/or saturation of an image.
 
 bcmatch --- Modifies one image to try to match its brightness, contrast and optionally saturation to that of another image.
 
+bevel --- Applies an inner bevel or outer bevel or emboss effect to an image.
+
+bevelborder --- Applies a bevel effect to border of an image.
+
 bilinearwarp --- Generates a proper four-point bilinear warp of the input image.
 
 binomial --- Generates high pass or low pass filtered images based upon convolution kernels whose weights are derived from the binomial coefficients
@@ -93,6 +97,8 @@ downsize --- Downsizes (reduces) an image to a specified file size.
 duotonemap --- Enhances the shadows and/or highlight regions in an image.
 
 emboss --- Applies an emboss effect to an image.
+
+enrich --- Enhances an image by high pass filtering and composition.
 
 exposure --- Changes the exposure level of an image.
 
@@ -163,6 +169,8 @@ lenswarp --- simulates the effect of looking at a picture through a one side cur
 levelcolors --- Applies a color level transformation to an image channel-by-channel.
 
 localthresh --- Automatically thresholds an image to binary (b/w) format using a moving window adaptive thresholding approach.
+
+locatecolors --- Modifies an image showing only those pixels which are within the specified color range.
 
 lupe --- Applies a magnifying glass effect in a local area of an image.
 
@@ -259,6 +267,8 @@ spline --- Draws a spline curve on an image based upon supplied points.
 splitimage --- Generates a side-by-side append of two partial images with an option to animate the amount of each image used in the append.
 
 squareup --- Resizes an image and squares it up either by padding or cropping.
+
+stainedglass --- Applies a stained glass cell effect to an image.
 
 starburst --- Applies a starburst pattern to an image.
 

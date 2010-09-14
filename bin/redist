@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/27/2007 .......... revised 7/16/2009
+# Developed by Fred Weinhaus 8/27/2007 .......... revised 7/1/2010
 #
 # USAGE: redist [-g] [-s shape] [-m colormodel] [-c channel] [mean[,lo[,hi]]] infile outfile
 # USAGE: redist [-h or -help]
@@ -204,16 +204,16 @@ gaussian()
 
 	# create low part of gaussian distribution
 	fact=`convert xc: -format "%[fx:1/(2*($lo)^2)]" info:`
-	loArr=(`awk -v mean="$mean" -v fact="$fact" -v expo="$expo" '
-		BEGIN { for (i=0;i<=mean;i++) print expo^(-((i-mean)^2)*fact); }'`)
+	loArr=(`awk -v mean="$mean" -v fact="$fact" -v expo="$expo" -v maxval="$maxval" '
+		BEGIN { for (i=0;i<=mean;i++) print maxval*expo^(-((i-mean)^2)*fact); }'`)
 #	echo ${loArr[*]}
 #	echo ${#loArr[*]}
 
 	# create high part of gaussian distribution
 	mean1=`expr $mean + 1`
 	fact=`convert xc: -format "%[fx:1/(2*($hi)^2)]" info:`
-	hiArr=(`awk -v mean="$mean" -v fact="$fact" -v expo="$expo" '
-		BEGIN { for (i=mean+1;i<256;i++) print expo^(-((i-mean)^2)*fact); }'`)
+	hiArr=(`awk -v mean="$mean" -v fact="$fact" -v expo="$expo" -v maxval="$maxval" '
+		BEGIN { for (i=mean+1;i<256;i++) print maxval*expo^(-((i-mean)^2)*fact); }'`)
 #	echo ${hiArr[*]}
 #	echo ${#hiArr[*]}
 	
@@ -572,7 +572,7 @@ if [ $display_graph = "yes" ]
 		while [ $i -lt 256 ]
 			do
 			x=`expr $i / 2`
-			y=`echo "scale=0; 100 - (100 * ${functionArr[$i]} / $functionmaxval)" | bc`
+			y=`echo "scale=0; 100 - (100 * ${functionArr[$i]} / $maxval)" | bc`
 			pointArr[$x]="$x,$y"
 			i=`expr $i + 2`
 		done

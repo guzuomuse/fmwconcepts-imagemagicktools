@@ -1,28 +1,32 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/23/2010 .......... 5/23/2010
+# Developed by Fred Weinhaus 5/23/2010 .......... 6/5/2010
 #
-# USAGE: pagecurl [-r rangle] [-l langle] [-m mode] [-c color] [-b bgcolor] [-a arc] [-x xcoord] [-y ycoord] [-d delta] infile outfile
+# USAGE: pagecurl [-a amount] [-m mode] [-c color] [-b bgcolor] [-e ellipticity] [-x xcoord] [-y ycoord] [-g gcontrast] [-d dcontrast] infile outfile
 # USAGE: pagecurl [-help]
 #
 # OPTIONS:
 #
-# -r      rangle       angle on right side of curl; 0<=integer<=90; 
-#                      clockwise rotation from right edge of image; 
-#                      must be less than langle; default=20
-# -l      langle       angle on left side of curl; 0<=integer<=90; 
-#                      clockwise rotation from right edge of image; 
-#                      must be greater than rangle; default=40
-# -m      mode         mode of shading curl; plain, grad or doublegrad; 
-#                      default=doublegrad
-# -c      color        color to apply to curl; any valid IM color; default=white
-# -b      bgcolor      background color to apply to image where curled away;
-#                      any valid IM color; default=none (transparent)
-# -a      arc          curl shaping parameter; percent ratio of ellipse radii 
-#                      ry/rx; 0<=integer<=100; 100 is semi-circle; default=75
-# -x      xcoord       x coordinate for apex of curl; default=right image edge
-# -y      ycoord       y coordinate for apex of curl; default=upper image edge
-# -d      delta        lengthening adjustment for curl in pixels; default=0
+# -a      amount            amount of pagecurl expressed as percent of image 
+#                           width; integer>=5; default=50
+# -m      mode              mode of shading curl; plain, grad or doublegrad; 
+#                           default=grad
+# -c      color             color to apply to curl; any valid IM color; 
+#                           default=white
+# -b      bgcolor           background color to apply to image where curled away;
+#                           any valid IM color; default=none (transparent)
+# -e      ellipticity       curl flattening from circle to ellipse; 
+#                           0<=float<1; default=0 for circle; recommended value 
+#                           other 0 is 0.5 for ellipse shape 
+# -x      xcoord            x coordinate for apex of curl; 
+#                           default=right image edge
+# -y      ycoord            y coordinate for apex of curl; 
+#                           default=upper image edge
+# -g      gcontrast         contrast adjustment for mode=grad; 0<=integer<=100; 
+#                           increases contrast only; default=15
+# -d      dcontrast         contrast adjustment for mode=doublegrad; 
+#                           -100<=integer<=100; positive increase contrast; 
+#                           negative decreases contrast; default=0
 #
 ###
 #
@@ -39,16 +43,11 @@
 # 
 # OPTIONS: 
 # 
-# -r rangle ... RANGLE is the angle on the right side of the curl. Values are 
-# integers between 0 and 90 degrees (clocwise rotation from right edge of 
-# image), but must be less langle. The default=20.
-#
-# -l langle ... LANGLE is the angle on the left side of the curl. Values are 
-# integers between 0 and 90 degrees (clocwise rotation from right edge of 
-# image), but must be greater than rangle. The default=40.
+# -a amount ... AMOUNT of pagecurl expressed as percent of image width. Values 
+# are in range integer>=5. The default=50
 #
 # -m mode ... MODE shading on the curl. Choices are: plain (or p), grad (or g)
-# for gradient, or doublegrad (or d) for double gradient. Default=doublegrad.
+# for gradient, or doublegrad (or d) for double gradient. Default=grad.
 #
 # -c color ... COLOR is the color to apply to curl. Any valid IM color is 
 # allowed. The default=white.
@@ -56,10 +55,9 @@
 # -b bgcolor ... BGCOLOR is the color to apply to curled away part of the image. 
 # Any valid IM color is allowed. The default=none for transparent.
 # 
-# -a arc ... ARC is the curl shaping parameter. It is the percent ratio of  
-# the ellipse radii, ry/rx. Values are integers between 0 and 100. 100 is a 
-# semi-circle. Smaller values produce a more flattened semi-ellipse. The 
-# default=75.
+# -e ellipticity ... ELLIPTICITY is the amount of curl flattening from a circle 
+# to an ellipse. Values are in range 0<=float<1. The default=0 for circle. 
+# Recommended value other 0 is 0.5 for ellipse shape. 
 # 
 # -x xcoord ... XCOORD is the X coordinate for the apex of the curl. Values 
 # are 0<integers<width. The default is the right edge of the image.
@@ -67,9 +65,15 @@
 # -y ycoord ... YCOORD is the Y coordinate for the apex of the curl. Values 
 # are integers. The default is the upper edge of the image.
 # 
-# -d delta ... DELTA is an adjustment of the length of the curl so that it 
-# reaches the bottom of the image. A larger value is needed as the curl gets 
-# wider. Values are integers>=0. The default=0
+# -g gcontrast ... GCONTRAST is the contrast adjustment for mode=grad. Values
+# are in range 0<=integer<=100. This increases contrast only. The default=15
+# 
+# -d dcontrast ... DCONTRAST is the contrast adjustment for mode=doublegrad. 
+# Values are in range -100<=integer<=100. Positive values increase contrast. 
+# Negative values decrease contrast. The default=0
+# 
+# Thanks to Anthony Thyssen for critiqing the original version and for 
+# several useful suggestions for improvement.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -79,17 +83,16 @@
 #
 
 # set default values
-rangle=20				# angle to right side of curl
-langle=40				# angle to left side of curl
-mode="doublegrad"		# plain, grad, doublegrad
-color="white"			# color for curl
+amount=50				# approx amount of curl in percent of image width; 5<=integer<=100
+mode="grad"				# plain, grad, doublegrad
+color="white"			# color for plain or gradients
 bgcolor="none"			# background color
-arc=75					# ellipse percent radii ratio ry/rx; 100 is circle
-xcoord=""				# apex of cone; default=width (UR corner)
-ycoord=""				# apex of cone; default=0 (UR corner)
-delta=10				# adjustment to length of curl so it reaches the bottom
-blurval=20				# blur radius value for doublegrad
-levelvals="20x55"		# level params for gradient adjustment
+ellipticity=0 			# e=(a-b)/a; 0<=float<1; e=0 is sphere no oblateness or flattening; e=0.5 is nominal ellipe
+xcoord=""				# apex of cone; default=width (UL corner)
+ycoord=""				# apex of cone; default=0 (UL corner)
+gcontrast=15			# gradient contrast values; non-neg interger percent
+dcontrast=0				# doublegrad contrast values; pos or neg integer percent
+swidth=2				# strokewidth; thickness of curl
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -150,27 +153,15 @@ else
 					   usage2
 					   exit 0
 					   ;;
-				-r)    # get rangle
+				-a)    # get amount
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID RIGHTANGLE SPECIFICATION ---"
+					   errorMsg="--- INVALID AMOUNT SPECIFICATION ---"
 					   checkMinus "$1"
-					   rangle=`expr "$1" : '\([0-9]*\)'`
-					   [ "$rangle" = "" ] && errMsg "--- RIGHTANGLE=$rangle MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
-					   test1=`echo "$rangle < 0" | bc`
-					   test2=`echo "$rangle > 90" | bc`
-					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- RIGHTANGLE=$rangle MUST BE AN INTEGER BETWEEN 0 AND 90 ---"
-					   ;;
-				-l)    # get langle
-					   shift  # to get the next parameter
-					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID LEFTANGLE SPECIFICATION ---"
-					   checkMinus "$1"
-					   langle=`expr "$1" : '\([0-9]*\)'`
-					   [ "$langle" = "" ] && errMsg "--- LEFTANGLE=$langle MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
-					   test1=`echo "$langle < 0" | bc`
-					   test2=`echo "$langle > 90" | bc`
-					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- LEFTANGLE=$langle MUST BE AN INTEGER BETWEEN 0 AND 90 ---"
+					   amount=`expr "$1" : '\([0-9]*\)'`
+					   [ "$amount" = "" ] && errMsg "--- AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$amount < 5" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- AMOUNT=$amount MUST BE AN GREATER THAN 4 ---"
 					   ;;
 				-m)    # get  mode
 					   shift  # to get the next parameter
@@ -199,16 +190,16 @@ else
 					   checkMinus "$1"
 					   bgcolor="$1"
 					   ;;
-				-a)    # get arc
+				-e)    # get ellipticity
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID ARC SPECIFICATION ---"
+					   errorMsg="--- INVALID ELLIPTICITY SPECIFICATION ---"
 					   checkMinus "$1"
-					   arc=`expr "$1" : '\([0-9]*\)'`
-					   [ "$arc" = "" ] && errMsg "--- ARC=$arc MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
-					   test1=`echo "$arc < 0" | bc`
-					   test2=`echo "$arc > 100" | bc`
-					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- ARC=$arc MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ellipticity=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$ellipticity" = "" ] && errMsg "--- ELLIPTICITY=$arc MUST BE A NON-NEGATIVE FLOAT (with no sign) ---"
+					   test1=`echo "$ellipticity < 0" | bc`
+					   test2=`echo "$ellipticity >= 1" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- ELLIPTICITY=$arc MUST BE A FLOAT GREATER THAN OR EQUAL 0 AND LESS THAN 1 ---"
 					   ;;
 				-x)    # get xcoord
 					   shift  # to get the next parameter
@@ -226,13 +217,27 @@ else
 					   ycoord=`expr "$1" : '\([-0-9]*\)'`
 					   [ "$ycoord" = "" ] && errMsg "--- YCOORD=$ycoord MUST BE AN INTEGER ---"
 					   ;;
-				-d)    # get delta
+				-g)    # get gcontrast
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID DELTA SPECIFICATION ---"
+					   errorMsg="--- INVALID GCONTRAST SPECIFICATION ---"
 					   checkMinus "$1"
-					   delta=`expr "$1" : '\([0-9]*\)'`
-					   [ "$delta" = "" ] && errMsg "--- DELTA=$delta MUST BE A NON-NEGATIVE INTEGER ---"
+					   gcontrast=`expr "$1" : '\([0-9]*\)'`
+					   [ "$gcontrast" = "" ] && errMsg "--- GCONTRAST=$gcontrast MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$gcontrast < 0" | bc`
+					   test2=`echo "$gcontrast > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- GCONTRAST=$gcontrast MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				-d)    # get dcontrast
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   #errorMsg="--- INVALID DCONTRAST SPECIFICATION ---"
+					   #checkMinus "$1"
+					   dcontrast=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$dcontrast" = "" ] && errMsg "--- DCONTRAST=$dcontrast MUST BE AN INTEGER ---"
+					   test1=`echo "$dcontrast < -100" | bc`
+					   test2=`echo "$dcontrast > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- DCONTRAST=$dcontrast MUST BE AN INTEGER BETWEEN -100 AND 100 ---"
 					   ;;
 			 	-)    # STDIN and end of arguments
 					   break
@@ -266,8 +271,10 @@ tmpA2="$dir/pagecurl_2_$$.mpc"
 tmpB2="$dir/pagecurl_2_$$.cache"
 tmpA3="$dir/pagecurl_3_$$.mpc"
 tmpB3="$dir/pagecurl_3_$$.cache"
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 0" 0
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 1" 1 2 3 15
+tmpA4="$dir/pagecurl_4_$$.mpc"
+tmpB4="$dir/pagecurl_4_$$.cache"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3 $tmpA4 $tmpB4; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3 $tmpA4 $tmpB4; exit 1" 1 2 3 15
 
 # test input image
 convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
@@ -281,11 +288,6 @@ hm1=`convert xc: -format "%[fx:$hh-1]" info:`
 xc=`convert xc: -format "%[fx:$ww/2]" info:`
 yc=`convert xc: -format "%[fx:$hh/2]" info:`
 
-
-# test for valid angles
-[ $langle -le $rangle ] && errMsg "--- INCONSISTENT LEFT AND RIGHT ANGLES ---"
-
-# get default values for xcoord and ycoord
 if [ "$xcoord" = "" -a "$ycoord" = "" ]; then
 	xcoord=$wm1
 	ycoord=0
@@ -295,83 +297,133 @@ elif [ "$xcoord" != "" -a "$ycoord" = "" ]; then
 	ycoord=0
 fi
 
-# test for valid xcoord
-[ $xcoord -le 0 -o $xcoord -ge $ww ] && errMsg "--- INVALID XCOORD ---"
+# set vertex nominally at upper left corner
+x1=$xcoord
+y1=$ycoord
+
+# compute approx right angle
+# dx=pixel distance from lower right corner along bottom edge
+dx=`convert xc: -format "%[fx:$ww*$amount/100]" info:`
+rangle=`convert xc: -format "%[fx:(180/pi)*atan($dx/($hh-$y1))]" info:`
+
+# compute a=rx as semicircle arc length = dx
+# compute b from a and ellipticity
+a=`convert xc: -format "%[fx:($dx+$ww-$x1)/pi]" info:`
+b=`convert xc: -format "%[fx:$a*(1-$ellipticity)]" info:`
+
+# get diameter and a bit more to use for initial ellipse image as it will be trimmed
+a2=`convert xc: -format "%[fx:2.2*$a]" info:`
+
+# compute approx center angle from p1 to dx and a
+prx=`convert xc: -format "%[fx:$ww-$dx]" info:`
+pry=$(($hh-1))
+lenr=`convert xc: -format "%[fx:hypot(($y1-$pry),($x1-$prx))]" info:`
+dangle=`convert xc: -format "%[fx:(180/pi)*asin(($a/2)/$lenr)]" info:`
+angle=`convert xc: -format "%[fx:$rangle+$dangle]" info:`
 
 
-# set apex (default at upper right) corner
-p1x=$xcoord
-p1y=$ycoord
+# create ellipse
+convert -size ${a2}x${a2} xc:white -fill black \
+	-draw "translate $xc,$yc rotate $angle ellipse 0,0 $a,$b 0,360" \
+	-trim +repage $tmpA2
 
-# get intersection of line at rangle with bottom edge of image
-p2y=$(($hm1+$delta))
-p2x=`convert xc: -format "%[fx:$xcoord-($hm1+$delta-$ycoord)*tan(pi*$rangle/180)]" info:`
+# get width, height of ellipse image
+eww=`convert $tmpA2 -ping -format "%w" info:`
+ehh=`convert $tmpA2 -ping -format "%h" info:`
 
-# get length of line 1
-len1=`convert xc: -format "%[fx:hypot(($p2x-$p1x),($p2y-$p1y))]" info:`
+# get center and upper left corner of trimmed ellipse image for inserting into full size image for mask
+y2=`convert xc: -format "%[fx:$hh-$ehh/2]" info:`
+x2=`convert xc: -format "%[fx:$x1-($y2-$y1)*tan(pi*$angle/180)]" info:`
+x0=`convert xc: -format "%[fx:$x2-$eww/2]" info:`
+y0=`convert xc: -format "%[fx:$y2-$ehh/2]" info:`
 
-# get end of line2 at langle
-p3x=`convert xc: -format "%[fx:$xcoord-$len1*sin(pi*$langle/180)]" info:`
-p3y=`convert xc: -format "%[fx:$ycoord+$len1*cos(pi*$langle/180)]" info:`
+# insert ellipse image in white background at correct location to form mask
+testx=`convert xc: -format "%[fx:sign($x0)]" info:`
+testy=`convert xc: -format "%[fx:sign($y0)]" info:`
+if [ $testx -eq 1 -a $testy -eq 1 ]; then
+	offsets="+${x0}+${y0}"
+elif [ $testx -eq -1 -a $testy -eq 1 ]; then
+	offsets="${x0}+${y0}"
+elif [ $testx -eq 1 -a $testy -eq -1 ]; then
+	offsets="+${x0}${y0}"
+elif [ $testx -eq -1 -a $testy -eq -1 ]; then
+	offsets="${x0}${y0}"
+fi
+convert -size ${ww}x${hh} xc:white -page ${eww}x${ehh}${offsets} $tmpA2  \
+	-flatten $tmpA2
 
-# get rotation angles
-angle3=`convert xc: -format "%[fx:($rangle+$langle)/2]" info:`
-angle4=`convert xc: -format "%[fx:-90+$angle3]" info:`
+
+# get length from apex p1 to center of ellipse p2
+len=`convert xc: -format "%[fx:hypot(($x2-$x1),($y2-$y1))]" info:`
+
+# get complement rotation angle
+angle2=`convert xc: -format "%[fx:-90+$angle]" info:`
+
+
+# compute tangent points as if ellipse at origin and apex vertically above at len
+# ellipse (x/a)^2 + (y/b)^2 = 1, where a and b are semi-major and semi-minor radii
+# differentiate: dy/dx = slope at tangent = -(x*b^2)/(y*a^2)
+# tangent line to apex (x1,y1): y-y1=-(x-x1)*(x*b^2)/(y*a^2)
+# solve for y and substitute into equation of ellipse to find x from quadratic equation
+p0x=0
+p0y=-$len
+A=`convert xc: -format "%[fx:$a*$a*$p0y*$p0y + $b*$b*$p0x*$p0x]" info:`
+B=`convert xc: -format "%[fx:-2*$a*$a*$b*$b*$p0x]" info:`
+C=`convert xc: -format "%[fx:$a*$a*$a*$a*($b*$b-$p0y*$p0y)]" info:`
+p3x=`convert xc: -format "%[fx:(-$B-sqrt($B*$B-4*$A*$C))/(2*$A)]" info:`
+p4x=`convert xc: -format "%[fx:(-$B+sqrt($B*$B-4*$A*$C))/(2*$A)]" info:`
+p3y=`convert xc: -format "%[fx:($a*$a*$b*$b-$b*$b*$p0x*$p3x)/($a*$a*$p0y)]" info:`
+p4y=`convert xc: -format "%[fx:($a*$a*$b*$b-$b*$b*$p0x*$p4x)/($a*$a*$p0y)]" info:`
+
+# rotate p2 and p3 relative to p1 by angle3
+x3=`convert xc: -format "%[fx:($p3x)cos(pi*$angle/180)-($p3y+$len)sin(pi*$angle/180)+$x1]" info:`
+y3=`convert xc: -format "%[fx:($p3x)sin(pi*$angle/180)+($p3y+$len)cos(pi*$angle/180)+$y1]" info:`
+x4=`convert xc: -format "%[fx:($p4x)cos(pi*$angle/180)-($p4y+$len)sin(pi*$angle/180)+$x1]" info:`
+y4=`convert xc: -format "%[fx:($p4x)sin(pi*$angle/180)+($p4y+$len)cos(pi*$angle/180)+$y1]" info:`
+
+# create triangle mask
+convert -size ${ww}x${hh} xc:black \
+	-fill white -stroke white -strokewidth $swidth -draw "polygon $x1,$y1 $x3,$y3 $x4,$y4" $tmpA3
+
+# setup for grad or doublegrad
+if [ "$mode" = "grad" ]; then
+	lo=$gcontrast
+	hi=$((100-$lo))
+	process="-level ${lo}x${hi}% +level-colors black,$color"
+elif [ "$mode" = "doublegrad" ]; then
+	test=`convert xc: -format "%[fx:sign($dcontrast)]" info:`
+	echo "test=$test"
+	lo=`convert xc: -format "%[fx:abs($dcontrast)]" info:`
+	hi=$((100-$lo))
+	if [ $test -eq 1 ]; then
+		process="-level ${lo}x${hi}% -solarize 50% -level 0x50% +level-colors black,$color"
+	else
+		process="+level ${lo}x${hi}% -solarize 50% -level 0x50% +level-colors black,$color"
+	fi
+fi
 
 # draw filled triangle
 if [ "$mode" = "plain" ]; then
 	# draw colored polygon
+	convert $tmpA1 \( $tmpA3 -fill $color -opaque white \) $tmpA3 \
+		-compose over -composite $tmpA4
+else
+	# create gradient using -sparce-color barycentric with two points 
+	# then adjust contrast and color
 	convert $tmpA1 \
-		-fill $color -draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \
-		$tmpA3
-elif [ "$mode" = "grad" ]; then
-	# draw white polygon on black background and trim to boundary
-	# create gradient of same size and rotate and stretch contrast
-	# multiply trimmed polygon with gradient and colorize
-	# insert polygon back to original position
-	# insert colorized gradient back to correct position relative to infile
-	# insert trimmed polygon back to correct position relative to infile
-	# composite masked colored gradient image over infile using polygon as mask
-	convert $tmpA1 -threshold -1 -negate \
-		-fill white -draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \
-		-trim $tmpA2
-		www=`convert $tmpA2 -ping -format "%w" info:`
-		hhh=`convert $tmpA2 -ping -format "%h" info:`
-		xoff=`convert $tmpA2 -ping -format "%X" info:`
-		yoff=`convert $tmpA2 -ping -format "%Y" info:`
-		convert $tmpA1 \
-		\( -size ${www}x${hhh} gradient: -distort SRT "$angle4" -level ${levelvals}% \) $tmpA2 \
-		\( -clone 1 -clone 2 -alpha off -compose multiply -composite +level-colors black,$color \
-		-size ${ww}x${hh} xc:black +swap -geometry ${xoff}${yoff} -compose over -composite \) \
-		\( -clone 2 -size ${ww}x${hh} xc:black +swap -geometry ${xoff}${yoff} -compose over -composite \) \
-		-delete 1,2 -alpha off +geometry -compose over -composite $tmpA3
-elif [ "$mode" = "doublegrad" ]; then
-	# draw white polygon on black background
-	# apply color and blur to get double grad
-	# composite colored blurred image over infile using polygon as mask
-	convert $tmpA1 \
-		\( -clone 0 -threshold -1 -negate -fill white \
-		-draw "polygon $p1x,$p1y  $p2x,$p2y  $p3x,$p3y" \) \
-		\( -clone 1 +level-colors black,$color -blur ${blurval}x65000 \) \
-		+swap -compose over -composite $tmpA3
+		\( -size ${ww}x${hh} xc: -sparse-color Barycentric \
+		"$x3,$y3 white $x4,$y4 black" $process \) \
+		$tmpA3 -compose over -composite $tmpA4
 fi
 
-# convert arc from percent to fraction
-arc=`convert xc: -format "%[fx:$arc/100]" info:`
+# apply ellipse mask
+convert $tmpA1 $tmpA4 $tmpA2 -alpha off -compose over -composite $tmpA4
 
-# create and apply mask of semiellipse between pts 2 and 3 and composite original back
-# draw extra black line to avoid a thin dark line showing at bottom of semi-ellipse
-convert $tmpA1 $tmpA3 \
-	\( -clone 0 -threshold -1 \
-	-fill black -draw "path 'M $p2x,$p2y   A 1,$arc  $angle3  0,0 $p3x,$p3y'" \
-	-fill black -stroke black -strokewidth 1 -draw "line $p2x,$p2y  $p3x,$p3y" \) \
-	-alpha off -compose over -composite $tmpA3
-
-
-# create and apply mask for removed area
-convert $tmpA3 \
-	\( +clone -threshold -1 \
-	-fill black -draw "polygon $p1x,$p1y  $p2x,$p2y $wm1,$hm1 $wm1,0" \) \
+# create mask for removed area and apply to previous image
+convert $tmpA4 \( -size ${ww}x${hh} xc:white \
+	-fill red -draw "line $x1,$y1 $x4,$y4" \
+	-fill red -draw "translate $x2,$y2 rotate $angle ellipse 0,0 $a,$b 0,360" \
+	-fill black -draw "color $wm1,$hm1 floodfill" -fill white +opaque black -blur 2x65000 -level 50x100% \) \
 	-alpha off -compose copy_opacity -composite \
 	-compose over -background $bgcolor -flatten $outfile
 
