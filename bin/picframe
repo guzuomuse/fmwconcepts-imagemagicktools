@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/11/2008 .......... revised 3/12/2008
+# Developed by Fred Weinhaus 3/11/2008 .......... revised 9/27/2010
 #
-# USAGE: picframe [-f frameid] [-m mattesize] [-c mattecolor] [-b bordersize] [-s shade] [-a adjust] infile outfile
+# USAGE: picframe [-f frameid] [-m mattesize] [-c mattecolor] [-b bordersize] [-s shade] [-a adjust] [-o opacity ] [-d distance] infile outfile
 # USAGE: picframe [-h or -help]
 #
 # OPTIONS:
@@ -24,6 +24,12 @@
 #                            saturation. Values are expressed as three integers 
 #                            percentage changes separated by commas. See -modulate.
 #                            Default is 100,100,100 for no change.
+# -o      opacity            inner shadow opacity for upper and left sides; 
+#                            0<=integer<=100; default=50
+# -d      distance           inner shaddow distance in pixels for upper and 
+#                            left sides; integer>=0; if distance=0, then no 
+#                            shadow will created; default=0
+#                            
 #
 ###
 #
@@ -64,6 +70,13 @@
 # greater/less than 100 for the hue will shift the color towards the green/red. A 
 # value of 100,100,100 is the default and will make no change.
 # 
+# -o opacity ... OPACITY is the inner shadow opacity for upper and left sides. 
+# Values are integers between 0 and 100. The default=50.
+# 
+# -d distance ... DISTANCE is the inner shaddow distance in pixels for upper and 
+# left sides. Values are integers>=0. If distance=0, then no shadow will created.
+# The default=0
+# 
 # NOTE: Be sure to download the picframecorners folder and place it where you want it. 
 # Then modify the framedir location in the defaults section just below to point 
 # to where you have placed the brcorners folder.
@@ -94,6 +107,8 @@ bordersize=0
 bordercolor="black"
 shade=0
 adjust="100,100,100"
+opacity=50
+distance=0
 
 # count number of picture frame styles
 maxframes=`ls -l $framedir | sed -n 's/\(.*\.png\)/\1/p' | wc -l`
@@ -145,7 +160,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 12 ]
+elif [ $# -gt 16 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -210,6 +225,25 @@ else
 		 			   adjust=`expr "$1" : '\([0-9]*,[0-9]*,[0-9]*\)'`
 					   [ "$adjust" = "" ] && errMsg "--- ADJUST=$adjust MUST BE THREE NON-NEGATIVE INTEGERS SEPARATED BY COMMAS ---"
 		 			   ;;
+				-o)    # opacity
+					   shift  # to get the next parameter - opacity
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OPACITY SPECIFICATION ---"
+					   checkMinus "$1"
+					   opacity=`expr "$1" : '\([0-9]*\)'`
+					   [ "$opacity" = "" ] && errMsg "--- OPACITY=$opacity MUST BE A NON-NEGATIVE INTEGER ---"
+				   	   testA=`echo "$opacity < 0" | bc`
+				   	   testB=`echo "$opacity > 100" | bc`
+				   	   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- OPACITY=$opacity MUST BE A NON-NEGATIVE INTEGER BETWEEN 0 AND 100 ---"					   
+					   ;;
+				-d)    # distance
+					   shift  # to get the next parameter - distance
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DISTANCE SPECIFICATION ---"
+					   checkMinus "$1"
+					   distance=`expr "$1" : '\([0-9]*\)'`
+					   [ "$distance" = "" ] && errMsg "--- DISTANCE=$distance MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
 				 -)    # STDIN and end of arguments
 					   break
 					   ;;
@@ -241,17 +275,22 @@ dir="."    # suggestions are dir="." or dir="/tmp"
 
 tmpA="$dir/picframe_$$.mpc"
 tmpB="$dir/picframe_$$.cache"
-tmp0="$dir/picframe_0_$$.png"
-tmp1="$dir/picframe_1_$$.png"
-tmp2="$dir/picframe_2_$$.png"
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2; exit 1" 1 2 3 15
+tmp0A="$dir/picframe_0_$$.mpc"
+tmp0B="$dir/picframe_0_$$.cache"
+tmp1A="$dir/picframe_1_$$.mpc"
+tmp1B="$dir/picframe_1_$$.cache"
+tmp2A="$dir/picframe_2_$$.mpc"
+tmp2B="$dir/picframe_2_$$.cache"
+tmp3A="$dir/picframe_3_$$.mpc"
+tmp3B="$dir/picframe_3_$$.cache"
+trap "rm -f $tmpA $tmpB $tmp0A $tmp0B $tmp1A $tmp1B $tmp2A $tmp2B $tmp3A $tmp3B; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0A $tmp0B $tmp1A $tmp1B $tmp2A $tmp2B $tmp3A $tmp3B; exit 1" 1 2 3 15
 
 # test infile
-if convert -quiet -regard-warnings "$infile" +repage "$tmp0"
+if convert -quiet -regard-warnings "$infile" +repage "$tmp0A"
 	then
-	w1=`identify -format %w $tmp0`
-	h1=`identify -format %h $tmp0`
+	w1=`identify -format %w $tmp0A`
+	h1=`identify -format %h $tmp0A`
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
@@ -279,42 +318,58 @@ h4=`expr $h3 + 2 \* $h2`
 size1="${w3}x${h2}!"
 size2="${w2}x${h3}!"
 
-
+# set up modulate
 if [ "$adjust" = "100,100,100" ]
 	then
 	modulate=""
 else
 	modulate="-modulate $adjust"
 fi
-	
+
 if [ $shade -eq 100 ]
 	then
 	convert -size ${w3}x${h3} xc:none -bordercolor none \
-          -compose Dst -frame ${w2}x${h2}+0+${w2}  $outfile
+          -compose Dst -frame ${w2}x${h2}+0+${w2}  $tmp3A
 elif [ $shade -lt 100 ]
 	then
 	convert \( -size ${w4}x${h4} xc:white \) \
 		\( $tmpA -rotate 180 \) -gravity NorthWest -composite \
-		\( $tmpA[1x${h2}+0+0] -filter point -resize $size1 -flip \) -gravity North -composite \
+		\( $tmpA[1x${h2}+0+0] -scale $size1 -flip \) -gravity North -composite \
 		\( $tmpA -flip \) -gravity NorthEast -composite \
-		\( $tmpA[${w2}x1+0+0] -filter point -resize $size2 -flop \) -gravity West -composite \
-		\( $tmpA[${w2}x1+0+0] -filter point -resize $size2 \) -gravity East -composite \
+		\( $tmpA[${w2}x1+0+0] -scale $size2 -flop \) -gravity West -composite \
+		\( $tmpA[${w2}x1+0+0] -scale $size2 \) -gravity East -composite \
 		\( $tmpA -flop \) -gravity SouthWest -composite \
-		\( $tmpA[1x${h2}+0+0] -filter point -resize $size1 \) -gravity South -composite \
+		\( $tmpA[1x${h2}+0+0] -scale $size1 \) -gravity South -composite \
 		\( $tmpA \) -gravity SouthEast -composite \
-		$tmp1
+		$tmp1A
 	if [ $shade -eq 0 ]
 		then
-		convert \( $tmp1 $modulate \) \
-		\( $tmp0 -bordercolor black -border ${bordersize}x${bordersize} -bordercolor $mattecolor -border ${mattesize}x${mattesize} \) -gravity Center -composite \
-		$outfile
+		convert \( $tmp1A $modulate \) \
+		\( $tmp0A -bordercolor black -border ${bordersize}x${bordersize} \
+			-bordercolor $mattecolor -border ${mattesize}x${mattesize} \) \
+			-gravity Center -composite \
+			$tmp3A
 	else
 		convert -size ${w3}x${h3} xc:none -bordercolor none \
-			-compose Dst -frame ${w2}x${h2}+0+${w2} $tmp2
-		composite -blend $shade% $tmp2 $tmp1 $tmp1
-		convert \( $tmp1 -modulate $adjust \) \
-		\( $tmp0 -bordercolor black -border ${bordersize}x${bordersize} -bordercolor $mattecolor -border ${mattesize}x${mattesize} \) -gravity Center -composite \
-		$outfile
+			-compose Dst -frame ${w2}x${h2}+0+${w2} $tmp2A
+		composite -blend $shade% $tmp2A $tmp1A $tmp1A
+		convert \( $tmp1A -modulate $adjust \) \
+		\( $tmp0A -bordercolor black -border ${bordersize}x${bordersize} \
+			-bordercolor $mattecolor -border ${mattesize}x${mattesize} \) \
+			-gravity Center -composite \
+		$tmp3A
 	fi
+fi
+
+# add shadow
+if [ "$distance" != "0" ]; then
+#	blur=`convert xc: -format "%[fx:$distance/2]" info:`
+	blur=`convert xc: -format "%[fx:min($distance-1,2*$distance/3)]" info:`
+	convert $tmp3A \
+		\( $tmp2A -background black -shadow ${opacity}x${blur}+${distance}+${distance} \
+		-gravity center -crop ${w3}x${h3}-${distance}-${distance} +repage \) \
+		-gravity center -compose over -composite $outfile
+else
+	convert $tmp3A $outfile
 fi
 exit 0

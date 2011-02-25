@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 6/12/2010 .......... 6/14/2010
+# Developed by Fred Weinhaus 6/12/2010 .......... 11/3/2010
 #
 # USAGE: stainedglass [-k kind] [-s size] [-o offset] [-n ncolors] [-b bright] [-e ecolor] [-t thick] [-r rseed] infile outfile
 # USAGE: stainedglass [-h or -help]
@@ -275,8 +275,10 @@ colorspace=`convert $infile -ping -format "%[colorspace]" info:`
 # set up for modulate
 if [ "$bright" != "100" -a "$colorspace" = "CMYK" ]; then
 	modulation="-colorspace rgb -modulate ${bright},100,100 -colorspace cmyk"
-elif [ "$bright" != "100" -a "$colorspace" = "cmyka" ]; then
+elif [ "$bright" != "100" -a "$colorspace" = "CMYKA" ]; then
 	modulation="-colorspace rgba -modulate ${bright},100,100 -colorspace cmyka"
+elif [ "$bright" != "100" ]; then
+	modulation="-modulate ${bright},100,100"
 else
 	modulation=""
 fi

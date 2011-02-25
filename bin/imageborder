@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/23/2009 .......... revised 7/20/2010
+# Developed by Fred Weinhaus 4/23/2009 .......... revised 1/10/2011
 # 
 # USAGE: imageborder [-s size] [-b blurring] [-m mixcolor] [-p percent] [-r rimcolor] [-t thickness] [-e effect] [-f framebevel] [-c contrast] infile outfile
 # USAGE: imageborder [-h or -help]
@@ -64,9 +64,9 @@
 # original image. Values are integers>=0. The default=1.
 # 
 # -e effect ... EFFECT specifies the type of image border effect to use.
-# The choices are edge, mirror, magnify, tile, random or bevel. If edge is
-# specified, then the top, right, bottom and left row/column of the image
-# will simply be extended by the size parameters to create the image
+# The choices are average, edge, mirror, magnify, tile, random or bevel. If 
+# edge is specified, then the top, right, bottom and left row/column of the 
+# image will simply be extended by the size parameters to create the image
 # border. If mirror is specified, then the outer size pixels from the
 # image will be mirrored to produce the image border effect. If magnify is
 # specified, then the border will be created from the magnified image. If
@@ -328,7 +328,7 @@ fi
 # setup for using average color 
 if [ "$effect" = "average" ]; then
 	effect="background"
-	bgcolor=`convert \( zelda3.jpg -scale 1x1! \) -format "rgb(%[fx:100*u.p{0,0}.r]%%,%[fx:100*u.p{0,0}.g]%%,%[fx:100*u.p{0,0}.b]%%)" info:`
+	bgcolor=`convert \( $tmpA -scale 1x1! \) -format "rgb(%[fx:100*u.p{0,0}.r]%%,%[fx:100*u.p{0,0}.g]%%,%[fx:100*u.p{0,0}.b]%%)" info:`
 	backgroundcoloring="-background $bgcolor"
 	colorization1=""
 	colorization2="-fill $mixcolor -colorize ${percent}%"

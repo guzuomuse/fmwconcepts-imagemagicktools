@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/7/2008 .......... revised 5/18/2009
+# Developed by Fred Weinhaus 3/7/2008 .......... revised 9/30/2010
 #
 # USAGE: bubblewarp ["osx,dx,isx,iox [osy,dy,isy,ioy]"] [-t type] [-m mode] [-f format] [-v vp] [-c vpcolor] [-b bgcolor] infile outfile
 # USAGE: bubblewarp [-h or -help]
@@ -392,7 +392,11 @@ elif [ "$mode" = "polar" ]
 	fi
 
 	if [ "$dx" = "$dy" ]; then 
-		ffr="ffr=rd?$ipid2*asin(rd)/rd:0;"
+		if [ "$type" = "sin" ]; then
+			ffr="ffr=rd?sin($pid2*rd)/rd:0;"
+		else
+			ffr="ffr=rd?$ipid2*asin(rd)/rd:0;"
+		fi			
 		convert -monitor $tmpA -matte -channel RGBA -virtual-pixel $vp -background $vc -fx \
 			"xd=$sxc*(i-$xc); yd=$syc*(j-$yc); $rd $ffr xs=$isx*$xc*ffr*xd+$xc+$iox; ys=$isy*$yc*ffr*yd+$yc+$ioy; $result" \
 			$out

@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/18/2007 .......... revised 4/6/2010
+# Developed by Fred Weinhaus 9/18/2007 .......... revised 10/4/2010
 # 
 # USAGE: gradient [-k kind] [-f filter] [t thresh] [-m mix] [-b bias] infile outfile
 # USAGE: gradient [-h or -help]
@@ -114,6 +114,7 @@ filt=1
 mix=100
 thresh=""
 bias=0
+version=1
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -292,9 +293,10 @@ fi
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/gradient_$$.mpc"
 tmpB="$dir/gradient_$$.cache"
-tmp0="$dir/gradient_0_$$.png"
-trap "rm -f $tmpA $tmpB $tmp0; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0; exit 1" 1 2 3 15
+tmp0A="$dir/gradient_0_$$.mpc"
+tmp0B="$dir/gradient_0_$$.cache"
+trap "rm -f $tmpA $tmpB $tmp0A $tmp0B; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0 $tmp0B; exit 1" 1 2 3 15
 
 
 # get filter
@@ -337,14 +339,14 @@ if [ $version -eq 1 ]; then
 		convert \( $tmpA -convolve "$dx" \) \( $tmpA -convolve "$dy" \) \
 			\( -clone 0 -clone 0 -compose multiply -composite -gamma 2 \) \
 			\( -clone 1 -clone 1 -compose multiply -composite -gamma 2 \) \
-			-delete 0,1 -compose plus -composite $threshoption $tmp0
+			-delete 0,1 -compose plus -composite $threshoption $tmp0A
 
 	elif [ $kind -eq 2 ]
 		then
 		convert \( $tmpA -convolve "$dx" \) \( $tmpA -convolve "$dy" \) \
 			\( -clone 0 -clone 0 -compose multiply -composite \) \
 			\( -clone 1 -clone 1 -compose multiply -composite \) \
-			-delete 0,1 -compose plus -composite -gamma 2 $threshoption $tmp0			
+			-delete 0,1 -compose plus -composite -gamma 2 $threshoption $tmp0A			
 	fi
 elif [ $version -eq 2 ]; then
 	if [ $kind -eq 1 ]; then
@@ -353,7 +355,7 @@ elif [ $version -eq 2 ]; then
 			\( $tmpA -bias 50% -convolve "$dy" -solarize 50% \) \
 			\( -clone 0 -clone 0 -compose multiply -composite -gamma 2 \) \
 			\( -clone 1 -clone 1 -compose multiply -composite -gamma 2 \) \
-			-delete 0,1 -compose plus -composite -negate $threshoption $tmp0
+			-delete 0,1 -compose plus -composite -negate $threshoption $tmp0A
 
 	elif [ $kind -eq 2 ]
 		then
@@ -362,14 +364,14 @@ elif [ $version -eq 2 ]; then
 			\( -clone 0 -clone 0 -compose multiply -composite \) \
 			\( -clone 1 -clone 1 -compose multiply -composite \) \
 			-delete 0,1 -compose plus -composite -gamma 2 -negate \
-			$stretch $threshoption $tmp0
+			$stretch $threshoption $tmp0A
 	fi
 fi
 
-[ $mix -lt 100 -a $bias -eq 0 ] && composite -blend $mix $tmp0 $tmpA -matte $tmp0
-[ $mix -lt 100 ] && composite -blend $mix $tmp0 $tmpA -matte miff:- | \
-	convert - -evaluate add $bias% $tmp0
-convert $tmp0 $outfile
+[ $mix -lt 100 -a $bias -eq 0 ] && composite -blend $mix $tmp0A $tmpA -matte $tmp0A
+[ $mix -lt 100 ] && composite -blend $mix $tmp0A $tmpA -matte miff:- | \
+	convert - -evaluate add $bias% $tmp0A
+convert $tmp0A $outfile
 
 exit 0
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/22/2010 .......... revised 7/22/2010
+# Developed by Fred Weinhaus 7/22/2010 .......... revised 11/19/2010
 # 
 # USAGE: locatecolors -b begincolor -e endcolor [-m mode] infile outfile
 # USAGE: locatecolors [-h or -help]
@@ -54,7 +54,7 @@
 # set default values
 begincolor=""			# no default value
 endcolor=""				# no default value
-method="and"			# "and" or "or"
+mode="and"			# "and" or "or"
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"

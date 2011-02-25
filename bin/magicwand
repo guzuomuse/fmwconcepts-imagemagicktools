@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 11/2/2007 .......... revised 8/6/2008
+# Developed by Fred Weinhaus 11/2/2007 .......... revised 12/10/2010
 #
 # USAGE: magicwand x,y [-t threshold] [-f format] [-r region] [-m mask] [-c color] [-o opacity] infile outfile
 # USAGE: magicwand [-h or -help]
@@ -269,8 +269,11 @@ fi
 # create negative mask - for region=outside
 if [ "$region" = "outside" ]
 	then
-	convert \( -size ${width}x${height} xc:white \) $tmp0 \
-		-composite -negate -transparent white $tmp0
+	convert $tmp0 -channel rgba \
+		-fill white -opaque none \
+		-transparent black \
+		-fill black -opaque white $tmp0
+
 fi
 
 
@@ -286,7 +289,7 @@ fi
 #convert mask to edge if appropriate
 if [ "$mask" = "edge" ]
 	then
-	convert $tmp0 -convolve "-1,-1,-1,-1,8,-1,-1,-1,-1" $tmp0
+	convert $tmp0 -convolve "-1,-1,-1,-1,8,-1,-1,-1,-1" -clamp $tmp0
 fi
 
 

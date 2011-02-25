@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/23/2010 .......... 6/5/2010
+# Developed by Fred Weinhaus 5/23/2010 .......... 12/2/2010
 #
 # USAGE: pagecurl [-a amount] [-m mode] [-c color] [-b bgcolor] [-e ellipticity] [-x xcoord] [-y ycoord] [-g gcontrast] [-d dcontrast] infile outfile
 # USAGE: pagecurl [-help]
@@ -311,8 +311,9 @@ rangle=`convert xc: -format "%[fx:(180/pi)*atan($dx/($hh-$y1))]" info:`
 a=`convert xc: -format "%[fx:($dx+$ww-$x1)/pi]" info:`
 b=`convert xc: -format "%[fx:$a*(1-$ellipticity)]" info:`
 
-# get diameter and a bit more to use for initial ellipse image as it will be trimmed
-a2=`convert xc: -format "%[fx:2.2*$a]" info:`
+# get diameter by sqrt(2) and a bit more to use for initial ellipse image as it will be trimmed
+a2=`convert xc: -format "%[fx:3*$a]" info:`
+a2h=`convert xc: -format "%[fx:$a2/2]" info:`
 
 # compute approx center angle from p1 to dx and a
 prx=`convert xc: -format "%[fx:$ww-$dx]" info:`
@@ -324,7 +325,7 @@ angle=`convert xc: -format "%[fx:$rangle+$dangle]" info:`
 
 # create ellipse
 convert -size ${a2}x${a2} xc:white -fill black \
-	-draw "translate $xc,$yc rotate $angle ellipse 0,0 $a,$b 0,360" \
+	-draw "translate $a2h,$a2h rotate $angle ellipse 0,0 $a,$b 0,360" \
 	-trim +repage $tmpA2
 
 # get width, height of ellipse image

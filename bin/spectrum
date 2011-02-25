@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/17/2009 .......... revised 8/17/2009
+# Developed by Fred Weinhaus 8/17/2009 .......... revised 1/23/2011
 #
 # USAGE: spectrum [-m] [-s scale] [-g] infile outfile
 # USAGE: spectrum [-h or -help]
@@ -12,7 +12,6 @@
 # -s      scale       scaling constant; integer greater than zero;
 #                     default will be automatically computed.
 # -g                  convert spectrum to grayscale
-#
 #
 ###
 #
@@ -51,7 +50,12 @@
 # at value=0 (see -threshold 0) to convert it to a binary mask image.
 # 
 # REQUIREMENTS: IM IM 6.3.9-1 or higher due to the use of -format "%[min]" and
-# "%[max]".
+# "%[max]". Also requires FFTW delegate library to compute the Fourier 
+# Transform. Q8 IM compilation is not generally recommended and may not carry 
+# enough precision for the Fourier Transform.
+# 
+# See http://www.fmwconcepts.com/imagemagick/fourier_transforms/fourier.html 
+# for more details about the Fourier Transform with ImageMagick.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -204,6 +208,7 @@ levelParms()
 
 # process image
 if [ "$scale" != "" ]; then
+	scale=`convert xc: -format "%[fx:int(10^$scale) - 1]" info:`
 	levelParms $tmpA
 	convert $tmpA -level ${min},${max} \
 		-evaluate log $scale -fill "rgb(1,1,1)" -opaque black $outfile

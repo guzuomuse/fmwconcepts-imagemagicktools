@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/22/2010 .......... revised 1/24/2010
+# Developed by Fred Weinhaus 1/22/2010 .......... revised 2/10/2011
 #
-# USAGE: notch [-r rad] [-t thresh] [-c centrad] [-h horizontal] [-v vertical] [-o outer] [-l left] [-r right] [-u upper] [-b bottom] [-m median] [-d dilate] [-s smooth] [-S] [-K] [ infile outfile
+# USAGE: notch [-r rad] [-t thresh] [-c centrad] [-h horizontal] [-v vertical] [-o outer] [-l left] [-r right] [-u upper] [-b bottom] [-m median] [-d dilate] [-s smooth] [-S] [-K] infile outfile
 # USAGE: notch [-H or -help]
 #
 # OPTIONS:
