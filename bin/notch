@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/22/2010 .......... revised 2/10/2011
+# Developed by Fred Weinhaus 1/22/2010 .......... revised 3/10/2011
 #
 # USAGE: notch [-r rad] [-t thresh] [-c centrad] [-h horizontal] [-v vertical] [-o outer] [-l left] [-r right] [-u upper] [-b bottom] [-m median] [-d dilate] [-s smooth] [-S] [-K] infile outfile
 # USAGE: notch [-H or -help]
@@ -227,7 +227,7 @@
 # set default values
 rad=7			# radius of initial blur for getting (image - mean); rad>0
 thresh="" 		# default=kapurthresh; otherwise percent for -threshold
-center=2		# circular center mask radius; center>0
+centrad=2		# circular center mask radius; center>0
 horizontal=0	# optional horizontal center line mask thickness
 vertical=0		# optional vertical center line mask thickness
 outer=0			# circular outer mask distance from center sides

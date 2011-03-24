@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/23/2007 .......... revised 8/25/2008
+# Developed by Fred Weinhaus 8/23/2007 .......... revised 3/9/2011
 #
 # USAGE: spline [-s spline] [-t tension] [-b bias] [-e endmode] [-c curvecolor] [-p pointcolor] [-l linecolor] [-i interiorcolor] [-sw strokewidth] [-d widthxheight] [-bg bgcolor] "x1,y1 x2,y2 ..." [infile] outfile
 # USAGE: spline [-s spline] [-t tension] [-b bias] [-e endmode] [-c curvecolor] [-p pointcolor] [-l linecolor] [-i interiorcolor] [-sw strokewidth] [-d widthxheight] [-bg bgcolor] -f point_file [infile] outfile
@@ -345,7 +345,7 @@ else
 				-b)    # get bias
 					   shift  # to get the next parameter - point_file
 					   bias=`expr "$1" : '\([-.0-9]*\)'`
-					   [ "$bias" = "" ] && errMsg "--- BIAS=$tension MUST BE A NUMERICAL VALUE ---"
+					   [ "$bias" = "" ] && errMsg "--- BIAS=$bias MUST BE A NUMERICAL VALUE ---"
 					   ;;
 			   -sw)    # get strokewidth
 					   shift  # to get the next parameter
@@ -735,7 +735,7 @@ kbs()
 	b1=$y2
 	b0=$y0
 	}
-	
+
 # function to spline interpolate between two x,y pairs
 spline_interp()
 	{
@@ -752,15 +752,24 @@ spline_interp()
 	x3=`echo "$pair3" | cut -d, -f1`
 	y3=`echo "$pair3" | cut -d, -f2`
 	$spline
+
 	#set range as distance in pixels between points over which to interpolate 
-	# and convert to integer (as a count) so ends exactly on knot
-	range=`convert xc: -format "%[fx:floor(hypot($x2-$x1,$y2-$y1))]" info:`
-
-#echo "x0=$x0; y0=$y0; x1=$x1; y1=$y1; x2=$x2; y2=$y2; x3=$x3; y3=$y3"
-#echo "a3=$a3; a2=$a2; a1=$a1; a0=$a0"
-#echo "b3=$b3; b2=$b2; b1=$b1; b0=$b0"
-#echo "range=$range;"
-
+	# and convert to integer counts (numinc) and float pixinc so ends exactly on knot
+	range=`convert xc: -format "%[fx:hypot($x2-$x1,$y2-$y1)]" info:`
+	numinc=`convert xc: -format "%[fx:floor($range/$pinc)]" info:`
+	pinc=`convert xc: -format "%[fx:$range/$numinc]" info:`
+	
+	# threshold a and b coefs as -fx will produce scientific notation for values very near 0 that bc will not understand
+	a3=`convert xc: -format "%[fx:abs($a3)<=0.99999?0:$a3]" info:`
+	a2=`convert xc: -format "%[fx:abs($a2)<=0.99999?0:$a2]" info:`
+	a1=`convert xc: -format "%[fx:abs($a1)<=0.99999?0:$a1]" info:`
+	a0=`convert xc: -format "%[fx:abs($a0)<=0.99999?0:$a0]" info:`
+	b3=`convert xc: -format "%[fx:abs($b3)<=0.99999?0:$b3]" info:`
+	b2=`convert xc: -format "%[fx:abs($b2)<=0.99999?0:$b2]" info:`
+	b1=`convert xc: -format "%[fx:abs($b1)<=0.99999?0:$b1]" info:`
+	b0=`convert xc: -format "%[fx:abs($b0)<=0.99999?0:$b0]" info:`
+	
+	# start interpolation of points
 	s=0
 	# only use <= for last sequence so do not get duplicate points where sequences overlap
 	if [ "$last" = "true" ]; then 
@@ -768,15 +777,18 @@ spline_interp()
 	else
 		op="<"
 	fi
-	while [ `echo "$s $op $range" | bc` -eq 1 ]; do
-		s1=`echo "scale=6; $s/$range" | bc`
-		s2=`echo "scale=6; $s1*$s1/1" | bc`
-		s3=`echo "scale=6; $s2*$s1/1" | bc`
-		xval=`echo "scale=$precision; ($a3*$s3+$a2*$s2+$a1*$s1+$a0)/1" | bc`
-		yval=`echo "scale=$precision; ($b3*$s3+$b2*$s2+$b1*$s1+$b0)/1" | bc`
-		points="$points $xval,$yval"
-		s=`echo "scale=6; ($s+$pinc)/1" | bc`
-	done
+	points1=`awk -v range=$range -v numinc="$numinc" -v pinc="$pinc" -v op="$op" -v a0="$a0" \
+	-v a1="$a1" -v a2="$a2" -v a3="$a3" -v b0="$b0" -v b1="$b1" -v b2="$b2" -v b3="$b3" \
+	'BEGIN { if ( op=="<=" ) { for (s=0; s <= numinc; s++) \
+	{ s1=s*pinc/range; s2=s1*s1; s3=s2*s1; print a3*s3+a2*s2+a1*s1+a0, b3*s3+b2*s2+b1*s1+b0; }; } \
+	else { for (s=0; s < numinc; s++) \
+	{ s1=s*pinc/range; s2=s1*s1; s3=s2*s1; print a3*s3+a2*s2+a1*s1+a0, b3*s3+b2*s2+b1*s1+b0; }; } }' |\
+	while read x y; do
+	echo "$x,$y"
+	done`
+	# insert line break before each new section
+	points="$points
+$points1"
 	}
 
 # process data
@@ -787,10 +799,6 @@ pairArray=($plist)
 np=${#pairArray[*]}
 npm1=`expr $np - 1`
 npm2=`expr $np - 2`
-
-#echo "np=$np; npm1=$npm1"
-#echo "${pairArray[*]}"
-
 
 # separate x and y components of pairArray
 i=0
@@ -828,8 +836,6 @@ else
 	fi
 fi
 
-#echo "newplist=$newplist"
-
 # count number of segments
 if [ "$spline" = bezier ]; then
 	test=`convert xc: -format "%[fx:mod($np-4,3)]" info:`
@@ -838,8 +844,6 @@ if [ "$spline" = bezier ]; then
 else
 	numseg=`expr $np - 3`
 fi
-
-#echo "numseg=$numseg"
 
 # process pair list
 points=""

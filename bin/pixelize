@@ -1,27 +1,32 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/8/2008 .......... revised 5/8/2008
+# Developed by Fred Weinhaus 5/8/2008 .......... revised 3/9/2011
 #
-# USAGE: pixelize [-s size] infile outfile
+# USAGE: pixelize [-s size] [-m mode] infile outfile
 # USAGE: pixelize [-h or -help]
 #
 # OPTIONS:
 #
 # -s      size        pixelization size; size>0; default=3
+# -m      mode        mode of minimizing; 1=resize; 2=sample; default=1
 #
 ###
 #
 # NAME: PIXELIZE 
 # 
-# PURPOSE: To create a pixelized effect in an image.
+# PURPOSE: To create a pixelized or blocky effect in an image.
 # 
-# DESCRIPTION: PIXELIZE creates a pixelized effect in an image where 
-# more pixelization (larger sizes) create larger blocky effects.
+# DESCRIPTION: PIXELIZE creates a pixelized or blocky effect in an  
+# image where more pixelization (larger sizes) create larger blocky 
+# effects.
 # 
 # OPTIONS: 
 # 
-# -s size ... SIZE is the pixelization (block) size. Values are greater than 0. 
-# The default is 3.
+# -s size ... SIZE is the pixelization (block) size. Values are greater 
+# than 0. The default is 3.
+# 
+# -m mode ... MODE is the mode of minimizing. Choices are 1 for -resize 
+# and 2 for -sample. The default=1
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -79,7 +84,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 4 ]
+elif [ $# -gt 6 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -101,6 +106,15 @@ else
 					   [ "$size" = "" ] && errMsg "SIZE=$size MUST BE AN INTEGER"
 		   			   sizetest=`echo "$size <= 0" | bc`
 					   [ $sizetest -eq 1 ] && errMsg "--- SIZE=$size MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-m)    # get mode
+					   shift  # to get the next parameter - mode
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`expr "$1" : '\([0-9]*\)'`
+					   [ "$mode" = "" ] && errMsg "MODE=$mode MUST BE AN INTEGER"
+					   [ $mode -neq 1 -a $mode -neq 2 ] && errMsg "--- MODE=$mode MUST BE EITHER 1 OR 2 ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -141,5 +155,9 @@ h=`convert $infile -format "%[fx:h]" info:`
 minify=`convert xc: -format "%[fx:100/$size]" info:`
 
 # process image
-convert $infile -resize $minify% -scale ${w}x${h}! $outfile
+if [ $mode -eq 1 ]; then
+	convert $infile -resize $minify% -scale ${w}x${h}! $outfile
+elif [ $mode -eq 1 ]; then
+	convert $infile -sample $minify% -scale ${w}x${h}! $outfile
+fi
 exit 0
