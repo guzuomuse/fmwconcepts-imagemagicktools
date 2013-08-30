@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/22/2010 .......... revised 3/10/2011
+# Developed by Fred Weinhaus 1/22/2010 .......... revised 8/10/2013
 #
-# USAGE: notch [-r rad] [-t thresh] [-c centrad] [-h horizontal] [-v vertical] [-o outer] [-l left] [-r right] [-u upper] [-b bottom] [-m median] [-d dilate] [-s smooth] [-S] [-K] infile outfile
+# USAGE: notch [-r rad] [-t thresh] [-c centrad] [-h horizontal] [-v vertical] [-o outer] [-L left] [-R right] [-U upper] [-B bottom] [-m median] [-d dilate] [-s smooth] [-S] [-K] infile outfile
 # USAGE: notch [-H or -help]
 #
 # OPTIONS:
@@ -18,13 +18,13 @@
 #                           integer>=0; default=0 (none)
 # -o      outer             distance from center sides to create an outer 
 #                           circular mask; integer>0; default=2
-# -l      left              thickness of left side mask area; 
+# -L      left              thickness of left side mask area; 
 #                           integer>=0; default=0 (none)
-# -r      right             thickness of right side mask area; 
+# -R      right             thickness of right side mask area; 
 #                           integer>=0; default=0 (none)
-# -u      upper             thickness of upper (top) side mask area; 
+# -U      upper             thickness of upper (top) side mask area; 
 #                           integer>=0; default=0 (none)
-# -b      bottom            thickness of bottom side mask area; 
+# -B      bottom            thickness of bottom side mask area; 
 #                           integer>=0; default=0 (none)
 # -m      median            radius of median filtering; integer>=0; 
 #                           default=0 (no median filtering)
@@ -160,28 +160,28 @@
 # areas along the outer sides or corners of the spectrum. Values are 
 # integers>=0. The default=0 indicating no masking. 
 #
-# -l ... LEFT is the thickness of a rectangular mask extending across the left 
+# -L ... LEFT is the thickness of a rectangular mask extending across the left 
 # side of the spectrum, which may be used to cover any extraneous bright 
 # areas along the left side that are not inclusive of any star-like or strong 
 # linear patterns associated with the dither. This may be used to preserve 
 # the high frequency components of the image signal in this region. Values are 
 # positive integers. The default is 0 to indicate no masking along this region.
 #
-# -r ... RIGHT is the thickness of a rectangular mask extending across the  
+# -R ... RIGHT is the thickness of a rectangular mask extending across the  
 # right side of the spectrum, which may be used to cover any extraneous bright 
 # areas along the right side that are not inclusive of any star-like or strong 
 # linear patterns associated with the dither. This may be used to preserve 
 # the high frequency components of the image signal in this region. Values are 
 # positive integers. The default is 0 to indicate no masking along this region.
 #
-# -u ... UPPER is the thickness of a rectangular mask extending across the  
+# -U ... UPPER is the thickness of a rectangular mask extending across the  
 # upper (top) side of the spectrum, which may be used to cover any extraneous 
 # bright areas along the right side that are not inclusive of any star-like or 
 # strong linear patterns associated with the dither. This may be used to preserve 
 # the high frequency components of the image signal in this region. Values are 
 # positive integers. The default is 0 to indicate no masking along this region.
 # 
-# -b ... BOTTOM is the thickness of a rectangular mask extending across the  
+# -B ... BOTTOM is the thickness of a rectangular mask extending across the  
 # bottom side of the spectrum, which may be used to cover any extraneous bright 
 # areas along the right side that are not inclusive of any star-like or strong 
 # linear patterns associated with the dither. This may be used to preserve 
@@ -345,7 +345,7 @@ else
 					   vertical=`expr "$1" : '\([0-9]*\)'`
 					   [ "$vertical" = "" ] && errMsg "VERTICAL=$vertical MUST BE A NON-NEGATIVE INTEGER"
 					   ;;
-				-l)    # get left
+				-L)    # get left
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
 					   errorMsg="--- INVALID LEFT SPECIFICATION ---"
@@ -353,7 +353,7 @@ else
 					   left=`expr "$1" : '\([0-9]*\)'`
 					   [ "$left" = "" ] && errMsg "LEFT=$left MUST BE A NON-NEGATIVE INTEGER"
 					   ;;
-				-r)    # get right
+				-R)    # get right
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
 					   errorMsg="--- INVALID RIGHT SPECIFICATION ---"
@@ -361,7 +361,7 @@ else
 					   right=`expr "$1" : '\([0-9]*\)'`
 					   [ "$right" = "" ] && errMsg "RIGHT=$right MUST BE A NON-NEGATIVE INTEGER"
 					   ;;
-				-u)    # get upper
+				-U)    # get upper
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
 					   errorMsg="--- INVALID UPPER SPECIFICATION ---"
@@ -369,7 +369,7 @@ else
 					   upper=`expr "$1" : '\([0-9]*\)'`
 					   [ "$upper" = "" ] && errMsg "UPPER=$upper MUST BE A NON-NEGATIVE INTEGER"
 					   ;;
-				-b)    # get bottom
+				-B)    # get bottom
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
 					   errorMsg="--- INVALID BOTTOM SPECIFICATION ---"
@@ -439,9 +439,9 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
-	convert -size 1x1 xc:black $outfile
-	maskname=`convert $outfile -ping -format "%t" info:`
-	maskfile="${maskname}_mask.gif"
+# create maskfile name
+maskname=`echo "$outfile" | sed -n 's/^\(.*\)[\.].*$/\1/p'`
+maskfile="${maskname}_mask.gif"
 
 
 # setup temp files
@@ -461,7 +461,7 @@ convert -quiet -regard-warnings "$infile" +repage "$tmp1A" ||
 
 # get IM version
 im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # test for valid IM version to use FFT
 [ "$im_version" -lt "06050403" ] && errMsg "--- IM VERSION $im_version IS NOT COMPATIBLE WITH FFT ---"
@@ -490,7 +490,7 @@ kapurThresh()
 	img=$1
 
 	# get value array from IM histogram
-	nvalArr=(`convert $img -colorspace gray -depth 8 -format "%c" histogram:info:- \
+	nvalArr=(`convert $img -depth 8 -format "%c" -define histogram:unique-colors=true histogram:info:- \
 	| tr -cs '0-9\012' ' ' | sed -n 's/[ ]*\([0-9]*\)[ ]*\([0-9]*\).*$/\1 \2/p' |\
 	awk '
 	# AWK 
@@ -501,7 +501,7 @@ kapurThresh()
 	numvals=${#nvalArr[*]}
 	
 	# get count array from IM histogram
-	countArr=(`convert $img -colorspace gray -depth 8 -format "%c" histogram:info:- \
+	countArr=(`convert $img -depth 8 -format "%c" -define histogram:unique-colors=true histogram:info:- \
 	| tr -cs '0-9\012' ' ' | sed -n 's/[ ]*\([0-9]*\)[ ]*\([0-9]*\).*$/\1 \2/p' |\
 	awk '
 	# AWK 
@@ -579,8 +579,26 @@ lastrow=`convert xc: -format "%[fx:$fhh-1]" info:`
 centcol=`convert xc: -format "%[fx:($fww-1)/2]" info:`
 centrow=`convert xc: -format "%[fx:($fhh-1)/2]" info:`
 
-# convert mag to grayscale spectrum
-convert $tmp2A[0] -colorspace gray $tmp3A
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using redist.
+# Note: bug in 6.7.6.6 HSL/HSB bad, 6.7.7.0 HSL/HSB/RGB bad, 6.7.7.8 & 6.7.7.9 HSL/HSB bad, 6.7.8.1 HSB very bad
+# Note: for notch and other auto thresholding scripts, some (small?) differences between 6.7.5.10 and 6.7.7.0 inclusive
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+
+# convert to non-linear grayscale
+convert $tmp2A[0] $setcspace -colorspace gray $tmp3A
 if [ "$im_version" -gt "06050501" ]; then
 	convert $tmp3A -auto-level $tmp3A
 else
@@ -592,8 +610,9 @@ convert $tmp3A -evaluate log $scale $tmp3A
 
 
 # compute mean and subtract from image
+# clamp in HDRI mode
 convert $tmp3A \( +clone -blur ${rad}x65000 \) \
-	+swap -compose minus -composite $tmp3A
+	+swap -compose minus -composite -clamp $tmp3A
 
 #echo "thresh"
 # threshold 
@@ -620,7 +639,7 @@ if [ "$left" != "0" ]; then
 fi
 if [ "$right" != "0" ]; then
 	right=`convert xc: -format "%[fx:2*$right]" info:`
-	masking="-strokewidth $left -draw \"line $lastcol,0 $lastcol,$lastrow\""
+	masking="$masking -strokewidth $right -draw \"line $lastcol,0 $lastcol,$lastrow\""
 fi
 if [ "$upper" != "0" ]; then
 	upper=`convert xc: -format "%[fx:2*$upper]" info:`
@@ -628,11 +647,11 @@ if [ "$upper" != "0" ]; then
 fi
 if [ "$bottom" != "0" ]; then
 	bottom=`convert xc: -format "%[fx:2*$bottom]" info:`
-	masking="-strokewidth $bottom -draw \"line 0,$lastrow $lastcol,$lastrow\""
+	masking="$masking -strokewidth $bottom -draw \"line 0,$lastrow $lastcol,$lastrow\""
 fi
 
 centcol2=`convert xc: -format "%[fx:$centcol+$centrad]" info:`
-masking="$masking +strokewidth -draw \"circle $centcol,$centrow $centcol2,$centrow\""
+masking="$masking -strokewidth 0 -draw \"circle $centcol,$centrow $centcol2,$centrow\""
 eval convert $tmp3A $masking -alpha off $tmp3A
 if [ "$outer" != "0" ]; then
 	centcol3=`convert xc: -format "%[fx:$centcol+($centcol-$outer)]" info:`
@@ -642,16 +661,25 @@ if [ "$outer" != "0" ]; then
 fi
 
 
+#correct for change in median at IM 6.6.8-6 from radius to widthxheight
+#and from -median to -statistic median
+if [ "$im_version" -ge "06060806" -a "$median" != "0" ]; then
+	median=$((2*$median+1))
+	proc="-statistic median"
+else
+	proc="-median"
+fi
+
 # apply optional median filter, dilate, smooth, negate
 if [ "$median" != "0" ]; then
-	median="-median $median"
+	medianize="$proc $median"
 else
-	median=""
+	medianize=""
 fi
 if [ "$smooth" = "0" ]; then 
 	smooth=$dilate
 fi
-convert $tmp3A $median -blur ${dilate}x65000 -threshold 0 \
+convert $tmp3A $medianize -blur ${dilate}x65000 -threshold 0 \
 	-blur ${smooth}x65000 -negate $tmp3A
 
 

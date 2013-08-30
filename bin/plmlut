@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/18/2007 .......... revised 8/20/2008
+# Developed by Fred Weinhaus 8/18/2007 .......... revised 8/18/2012
 #
 # USAGE: plmlut [-s xscale,yscale] [-t thickness] [-g] "x1,y1 x2,y2 ..." lutfile
 # USAGE: plmlut [-s xscale,yscale] [-t thickness] [-g]  -f point_file lutfile
@@ -286,12 +286,14 @@ elif [ $count -gt 1 ]; then
 else
 	errMsg="--- INCORRECT NUMBER OF POINT PAIRS SUPPLIED ---"
 fi
+
 [ `echo "$firstx != 0" | bc` -eq 1 ] && plist="0,0 $plist"
 [ `echo "$lastx != $xscale" | bc` -eq 1 ] && plist="$plist $xscale,$yscale"
 
+
 # augment plist so that forms closed polygon
 # note duplicate points do not matter
-plistnew="0,0 $plist $xscale,$yscale $xscale,0"
+plistnew="$plist $xscale,0"
 
 # *************
 # echo "plistnew=$plistnew"

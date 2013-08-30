@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/16/2007 .......... revised 9/12/2009
+# Developed by Fred Weinhaus 9/16/2007 .......... revised 11/25/2012
 # 
 # USAGE: statsfilt [-s statistic] [-p power] infile outfile
 # USAGE: statsfilt [-h or -help]
@@ -314,12 +314,12 @@ shiftimages()
 
 # get im version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 	
 # process images
 case "$statistic" in
 	1)	# arithmetic mean
-		convert $tmpA -convolve "$ave" $outfile
+		convert $tmpA -define convolve:scale=\! -convolve "$ave" $outfile
 		;;
 	2)	# min
 		# create 8 shifted images
@@ -430,24 +430,29 @@ case "$statistic" in
 #		convert $tmp0 $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 -average $tmp0
 #		convert $tmp0 $tmpMin $tmpMax -fx "((9*u[0])-u[1]-u[2])/7" $outfile
 		# this works, but is slower
-		convert $tmp0 $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 $tmpMin $tmpMax -fx "(u[0]+u[1]+u[2]+u[3]+u[4]+u[5]+u[6]+u[7]+u[8]-u[9]-u[10])/7" $outfile
+		if [ "$im_version" -lt "0608005" ]; then
+			convert $tmp0 $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 $tmpMin $tmpMax -fx "(u[0]+u[1]+u[2]+u[3]+u[4]+u[5]+u[6]+u[7]+u[8]-u[9]-u[10])/7" $outfile
+		else
+			ff=`convert xc: -format "%[fx:1/7]" info:`
+			convert $tmp0 $tmp1 $tmp2 $tmp3 $tmp4 $tmp5 $tmp6 $tmp7 $tmp8 $tmpMin $tmpMax -evaluate multiply $ff -poly "1,1 1,1 1,1 1,1 1,1 1,1 1,1 1,1 1,1 -1,1 -1,1" $outfile
+		fi		
 		;;
 	6)	# standard deviation
 		# -gamma 2 is equivalent to sqrt
-		convert $tmpA -convolve "$ave" $tmp0
-		convert \( $tmpA $tmpA -compose multiply -composite -convolve "$ave" \) \
+		convert $tmpA -define convolve:scale=\! -convolve "$ave" $tmp0
+		convert \( $tmpA $tmpA -compose multiply -composite -define convolve:scale=\! -convolve "$ave" \) \
 			\( $tmp0 $tmp0 -compose multiply -composite \) +swap \
 			-compose minus -composite -gamma 2 $outfile
 		;;
 	7)	# geometric mean
 		# fx range 0-1, but ln(1)=0 and ln(0)=-infinity, so add 1 to every value and normalize by ln(2) and remove 1 at end
-		# convert $tmpA -fx "ln(u+1)/ln(2)" -convolve $ave -fx "exp(u*ln(2))-1" $outfile
+		# convert $tmpA -fx "ln(u+1)/ln(2)" -define convolve:scale=\! -convolve $ave -fx "exp(u*ln(2))-1" $outfile
 		# note don't need to normalize as ln(2)=.7 < 1; get same result as above
-		convert $tmpA -fx "ln(u+1)" -convolve $ave -fx "exp(u)-1" $outfile
+		convert $tmpA -fx "ln(u+1)" -define convolve:scale=\! -convolve $ave -fx "exp(u)-1" $outfile
 		;;
 	8)	# harmonic mean
 		# fx range 0-1, but 1/x(1)=1 and 1/x(0)=infinity, so add 1 to every value and remove 1 at end
-		convert $tmpA -fx "1/(u+1)" -convolve $ave -fx "(1/u)-1" $outfile
+		convert $tmpA -fx "1/(u+1)" -define convolve:scale=\! -convolve $ave -fx "(1/u)-1" $outfile
 		;;
 	9)	# Lp mean
    		[ $p -eq 0 ] && errMsg "--- POWER CANNOT BE ZERO ---"
@@ -461,13 +466,13 @@ case "$statistic" in
 			then
 			p=`echo "scale=0; - $p / 1" | bc`
 			ip=`echo "scale=10; 1 / $p" | bc`
-			#convert $tmpA -negate -fx "pow(u,$p)" -convolve $ave -fx "pow(u,$ip)" -negate $outfile
+			#convert $tmpA -negate -fx "pow(u,$p)" -define convolve:scale=\! -convolve $ave -fx "pow(u,$ip)" -negate $outfile
 			# -gamma is same as pow, just invert exponent
-			convert $tmpA -negate -gamma $ip -convolve $ave -gamma $p -negate $outfile
+			convert $tmpA -negate -gamma $ip -define convolve:scale=\! -convolve $ave -gamma $p -negate $outfile
 		else
-			#convert $tmpA -fx "pow(u,$p)" -convolve $ave -fx "pow(u,$ip)" $outfile
+			#convert $tmpA -fx "pow(u,$p)" -define convolve:scale=\! -convolve $ave -fx "pow(u,$ip)" $outfile
 			# -gamma is same as pow, just invert exponent
-			convert $tmpA -gamma $ip -convolve $ave -gamma $p $outfile
+			convert $tmpA -gamma $ip -define convolve:scale=\! -convolve $ave -gamma $p $outfile
 		fi
 		;;
    10)	# contraharmonic mean
@@ -484,18 +489,18 @@ case "$statistic" in
 			then
 			p=`echo "scale=0; - $p" | bc`
 			p1=`echo "scale=0; ($p + 1) / 1" | bc`
-			#convert \( $tmpA -negate -fx "(pow((u),$p1))" -convolve $ave \) \( $tmpA -negate -fx "(pow((u),$p))" -convolve $ave \) -fx "(u/v)" -negate $outfile
+			#convert \( $tmpA -negate -fx "(pow((u),$p1))" -define convolve:scale=\! -convolve $ave \) \( $tmpA -negate -fx "(pow((u),$p))" -define convolve:scale=\! -convolve $ave \) -fx "(u/v)" -negate $outfile
 			# -gamma is same as pow, just invert exponent
 			pinv=`echo "scale=10; 1 / $p" | bc`
 			p1inv=`echo "scale=10; 1 / $p1" | bc`
-			convert \( $tmpA -negate -gamma $p1inv -convolve $ave \) \( $tmpA -negate -gamma $pinv -convolve $ave \) -fx "(u/v)" -negate $outfile
+			convert \( $tmpA -negate -gamma $p1inv -define convolve:scale=\! -convolve $ave \) \( $tmpA -negate -gamma $pinv -define convolve:scale=\! -convolve $ave \) -fx "(u/v)" -negate $outfile
 
 		else
-			#convert \( $tmpA -fx "(pow((u),$p1))" -convolve $ave \) \( $tmpA -fx "(pow((u),$p))" -convolve $ave \) -fx "(u/v)" $outfile
+			#convert \( $tmpA -fx "(pow((u),$p1))" -define convolve:scale=\! -convolve $ave \) \( $tmpA -fx "(pow((u),$p))" -define convolve:scale=\! -convolve $ave \) -fx "(u/v)" $outfile
 			# -gamma is same as pow, just invert exponent
 			pinv=`echo "scale=10; 1 / $p" | bc`
 			p1inv=`echo "scale=10; 1 / $p1" | bc`
-			convert \( $tmpA -gamma $p1inv -convolve $ave \) \( $tmpA -gamma $pinv -convolve $ave \) -fx "(u/v)" $outfile
+			convert \( $tmpA -gamma $p1inv -define convolve:scale=\! -convolve $ave \) \( $tmpA -gamma $pinv -define convolve:scale=\! -convolve $ave \) -fx "(u/v)" $outfile
 		fi
 		;;
    11)  # linear distance weighted average

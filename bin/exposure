@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 6/1/2009 .......... revised 6/1/2009
+# Developed by Fred Weinhaus 6/1/2009 .......... revised 11/27/2011
 #
 # USAGE: exposure -a amount infile outfile
 # USAGE: exposure [-h or -help]
@@ -15,7 +15,7 @@
 #
 # NAME: EXPOSURE 
 # 
-# PURPOSE: To change the exposure of an image.
+# PURPOSE: To change the exposure level of an image.
 # 
 # DESCRIPTION: EXPOSURE changes the exposure level of an image to make  
 # it either brighter or darker. It uses -level 0x(100-amount)% to make 
@@ -146,7 +146,7 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 
 # get IM version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # get sign of amount
 sign=`convert xc: -format "%[fx:sign($amount)]" info:`

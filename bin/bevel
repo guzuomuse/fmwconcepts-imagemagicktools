@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/29/2010 .......... revised 7/30/2010
+# Developed by Fred Weinhaus 7/29/2010 .......... revised 7/31/2012
 # 
 # USAGE: bevel [-w width] [-a azimuth] [-e elevation] [-d depth] [-f form] [-i innermode] [-o outermode] [-s soften] [-t taper] [-b bcolor] [-c colormode] infile outfile
 # USAGE: bevel [-h or -help]
@@ -318,14 +318,39 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 # test if alpha channel enabled and completely opaque alpha channel
 is_alpha=`convert $tmpA1 -ping -format "%A" info:`
 alpha_mean=""
-[ "$is_alpha" = "True" ] && alpha_mean=`convert $tmpA1 -channel A -negate -separate -format "%[fx:mean]" info:`
+[ "$is_alpha" = "True" ] && alpha_mean=`convert $tmpA1 -alpha extract -format "%[fx:mean]" info:`
 opaque_alpha="no"
 [ "$is_alpha" = "False" -o "$alpha_mean" = "1" ] && opaque_alpha="yes"
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# also some compose methods have not been fixed as of 6.7.8.7 such as hardlight
+# The following was determined from various version tests using bevel.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.7
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
 
 # flatten alpha channel into image, but keep alpha channel
-convert $tmpA1 \( -clone 0 -alpha extract \) \
-	\( -clone 0 -background gray -flatten \) -delete 0 +swap \
+convert $tmpA1 $setcspace \( -clone 0 -alpha extract \) \
+	\( -clone 0 -background "gray(50%)" -flatten \) -delete 0 +swap \
 	-compose copy_opacity -composite $tmpA1
 
 
@@ -409,7 +434,6 @@ else
 	masking2="$tmpA2"
 fi
 
-
 # process image
 if [ "$form" = "inner" ]; then
 	if [ "$imode" = "hard" ]; then
@@ -424,7 +448,7 @@ if [ "$form" = "inner" ]; then
 		-auto-level $ideepening $softening \
 		\( +clone -fill "gray(50%)" -colorize 100% \) +swap \( $tmpA2 -threshold 0 \) \
 		-compose over -composite \
-		\( $tmpA1 -alpha off \) +swap -compose hardlight -composite \
+		\( $tmpA1 -alpha off \) +swap $setcspace -compose hardlight -composite \
 		$tmpA2 -alpha off -compose copy_opacity -composite \
 		$outfile
 elif [ "$form" = "outer" -a "$opaque_alpha" = "yes" ]; then
@@ -438,7 +462,7 @@ elif [ "$form" = "outer" -a "$opaque_alpha" = "yes" ]; then
 		-auto-level $odeepening $softening \
 		\( +clone -fill "gray(50%)" -colorize 100% \) +swap \( $tmpA2 -threshold 0 \) \
 		-compose over -composite \
-		\( $tmpA1 -alpha off \) +swap -compose hardlight -composite \
+		\( $tmpA1 -alpha off \) +swap $setcspace -compose hardlight -composite \
 		$tmpA2 -alpha off -compose copy_opacity -composite \
 		$outfile
 elif [ "$form" = "outer" ]; then
@@ -453,7 +477,7 @@ elif [ "$form" = "outer" ]; then
 		-auto-level $odeepening $softening $colorizing \
 		\( +clone -fill "gray(50%)" -colorize 100% \) +swap \( $masking2 -threshold 0 \) \
 		-compose over -composite $negating \
-		\( $tmpA1 -alpha off \) +swap -compose hardlight -composite \
+		\( $tmpA1 -alpha off \) +swap $setcspace -compose hardlight -composite \
 		$tmpA2 -alpha off -compose copy_opacity -composite \
 		$outfile
 elif [ "$form" = "emboss" ]; then
@@ -470,7 +494,7 @@ elif [ "$form" = "emboss" ]; then
 		-auto-level $ideepening $softening \
 		\( +clone -fill "gray(50%)" -colorize 100% \) +swap \( $tmpA2 -threshold 0 \) \
 		-compose over -composite \
-		\( $tmpA1 -alpha off \) +swap -compose hardlight -composite \
+		\( $tmpA1 -alpha off \) +swap $setcspace -compose hardlight -composite \
 		$tmpA2 -alpha off -compose copy_opacity -composite $tmpA3
 
 	# do outer bevel on result of inner bevel
@@ -485,7 +509,7 @@ elif [ "$form" = "emboss" ]; then
 		-auto-level $odeepening $softening $colorizing \
 		\( +clone -fill "gray(50%)" -colorize 100% \) +swap \( $masking2  -threshold 0 \) \
 		-compose over -composite $negating \
-		\( $tmpA3 -alpha off \) +swap -compose hardlight -composite \
+		\( $tmpA3 -alpha off \) +swap $setcspace -compose hardlight -composite \
 		$tmpA2 -alpha off -compose copy_opacity -composite \
 		$outfile
 		

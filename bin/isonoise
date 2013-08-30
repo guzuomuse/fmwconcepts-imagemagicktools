@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 9/13/2007 .......... revised 10/25/2007
+# Developed by Fred Weinhaus 9/13/2007 .......... revised 4/14/2012
 #
 # USAGE: isonoise [-r radius] [-t threshold] infile outfile
 # USAGE: isonoise [-h or -help]
@@ -42,15 +42,16 @@
 # 
 # 
 ######
-#
+
+
 # set default value for radius and threshold
 radius=1
 thresh=10
-#
+
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
-#
-#
+
+
 # set up functions to report Usage and Usage with Description
 PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
 PROGDIR=`dirname $PROGNAME`            # extract directory of program
@@ -67,7 +68,7 @@ usage2()
 	echo >&2 "$PROGNAME:" "$@"
 	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
 	}
-#
+
 # function to report error messages
 errMsg()
 	{
@@ -77,15 +78,15 @@ errMsg()
 	usage1
 	exit 1
 	}
-#
+
 # function to test for minus at start of value of second part of option 1 or 2
 checkMinus()
 	{
 	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
     [ $test -eq 1 ] && errMsg "$errorMsg"
 	}
-#
-#
+
+
 # test for correct number of arguments and get values
 if [ $# -eq 0 ]
 	then
@@ -143,12 +144,12 @@ else
 	infile=$1
 	outfile=$2
 fi
-#
+
 # test that infile provided
 [ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
-#
+
 # setup temporary images and auto delete upon exit
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/isonoise_$$.mpc"
@@ -157,7 +158,20 @@ tmp0="$dir/isonoise_0_$$.png"
 tmp1="$dir/isonoise_1_$$.png"
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 1" 1 2 3 15
-#
+
+
+#correct for change in median at IM 6.6.8-6 from radius to widthxheight
+#and to go from -median to -statistic median
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+if [ "$im_version" -ge "06060806" ]; then
+	radius=$((2*$radius+1))
+	proc="-statistic median"
+else
+	proc="-median"
+fi
+
+
 # process data
 # create median filtered version
 # get absolute difference image between input and median
@@ -166,7 +180,7 @@ trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 1" 1 2 3 15
 #
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
-	convert $tmpA -median $radius $tmp0
+	convert $tmpA $proc $radius $tmp0
 	convert $tmpA $tmp0 -compose Difference -composite -threshold $thresh% $tmp1
 	convert $tmpA $tmp0 $tmp1 -compose src -composite $outfile
 else

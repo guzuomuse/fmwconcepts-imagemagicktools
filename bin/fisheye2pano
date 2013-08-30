@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 8/10/2008 .......... revised 8/15/2008
+# Developed by Fred Weinhaus 8/10/2008 .......... revised 8/2/2012
 # 
 # USAGE: fisheye2pano [-w width] [-e extend] [-h hcen,hran] [-f format] [-p pfov] [-c xc,yc] [-v vcen,vrad] [-r radius] [-vp vpmethod] [-b bgcolor] infile outfile
 # USAGE: fisheye2pano -d [-c xc,yc] [-r radius] [-s strokecolor] infile outfile
@@ -470,12 +470,13 @@ fi
 # stereographic: r=2*f*tan(phi/2); f=(r/2)/tan(phi/2); f=(N/4)/(tan((fov/4)*(pi/180)))=N/(4*tan(fov*pi/720))
 
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # see Bourke diagram at http://local.wasp.uwa.edu.au/~pbourke/projection/fish2/
 
 # define transform terms"
 
+# NOTE: phi added as a constant to -fx as of IM 6.7.3.4. So need to change its name if used in -fx
 
 if [ "$format" = "tilt" -o "$format" = "level" ]; then
 
@@ -503,17 +504,17 @@ if [ "$format" = "tilt" -o "$format" = "level" ]; then
 	# get phi relative to center of output perspective
 	# phi=atan(y/f) which here corresponds to 0 at center of fisheye
 	# then add phioffset corresponding to some fraction of phirange for look point
-	[ "$mode" = "nadir" ] && phi="phi=atan2(yd,$pfoc)+$phioffset;"
-	[ "$mode" = "zenith" ] && phi="phi=atan2(-yd,$pfoc)+$phioffset;"
+	[ "$mode" = "nadir" ] && phiang="phiang=atan2(yd,$pfoc)+$phioffset;"
+	[ "$mode" = "zenith" ] && phiang="phiang=atan2(-yd,$pfoc)+$phioffset;"
 
 	# apply linear fisheye equation to relate phi to rr
 	# note factor hratio used to scale from output height to input height as phi is defined in unscaled input
 	ifoc=`convert xc: -format "%[fx:($ddim*180)/($ifov*pi)]" info:`
-	rr="rr=$hratio*$ifoc*phi;"
+	rr="rr=$hratio*$ifoc*phiang;"
 
 else
 	yd=""
-	phi=""
+	phiang=""
 	# rr is proportional to row from top or bottom of output image
 	# note: aspectinv is used to scale from outut to input vertical dimensions as rr is in input space
 	[ "$mode" = "nadir" ] && rr="rr=$hratio*(h-1-j)/2;"
@@ -544,7 +545,7 @@ echo "dwidth=$dwidth; dheight=$dheight; ddim=$ddim; h2=$h2"
 echo "xcs=$xcs; ycs=$ycs"
 echo "thetamin=$thetamin; theta0=$theta0; theta1=$theta1"
 echo "pfov=$pfov; pfoc=$pfoc; phioffset=$phioffset"
-echo "phi=$phi; rr=$rr"
+echo "phiang=$phiang; rr=$rr"
 echo "format=$format; mode=$mode; ifov=$ifov; aspect=$aspect; hratio=$hratio"
 fi
 
@@ -557,7 +558,7 @@ if [ "$draw" = "yes" ]
 else
 	convert \( -size ${dwidth}x${height} xc: \) $tmpA \
 		-virtual-pixel $vpmethod -background $bgcolor -monitor \
-		-fx "$yd $phi $rr $theta $xs $ys v.p{xs,ys}" \
+		-fx "$yd $phiang $rr $theta $xs $ys v.p{xs,ys}" \
 		$outfile
 fi
 exit 0

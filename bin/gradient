@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/18/2007 .......... revised 10/4/2010
+# Developed by Fred Weinhaus 9/18/2007 .......... revised 8/14/2012
 # 
 # USAGE: gradient [-k kind] [-f filter] [t thresh] [-m mix] [-b bias] infile outfile
 # USAGE: gradient [-h or -help]
@@ -320,11 +320,22 @@ else
 fi
 
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -lt "06050501" ]; then
 	stretch="-contrast-stretch 0"
 else
 	stretch="-auto-level"
+fi
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
+	then
+	: 'do nothing'
+	else
+		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
 # read the input image and filter image into the temp files and test validity.
@@ -368,9 +379,18 @@ elif [ $version -eq 2 ]; then
 	fi
 fi
 
-[ $mix -lt 100 -a $bias -eq 0 ] && composite -blend $mix $tmp0A $tmpA -matte $tmp0A
-[ $mix -lt 100 ] && composite -blend $mix $tmp0A $tmpA -matte miff:- | \
-	convert - -evaluate add $bias% $tmp0A
+
+if [ "$im_version" -lt "06050304" ]; then
+	[ $mix -lt 100 -a $bias -eq 0 ] && composite -blend $mix $tmp0A $tmpA $tmp0A
+	[ $mix -lt 100 ] && composite -blend $mix $tmp0A $tmpA miff:- | \
+		convert - -evaluate add $bias% $tmp0A
+else
+	[ $mix -lt 100 -a $bias -eq 0 ] && \
+		convert $tmpA $tmp0A -define compose:args=$mix -compose blend -composite $tmp0A
+	[ $mix -lt 100 ] && \
+		convert $tmpA $tmp0A -define compose:args=$mix -compose blend -composite -evaluate add $bias% $tmp0A
+	
+fi
 convert $tmp0A $outfile
 
 exit 0

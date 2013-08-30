@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/31/2008 .......... revised 6/24/2010
+# Developed by Fred Weinhaus 3/31/2008 .......... revised 6/12/2013
 # Added wedge-top and wedge-bottom effects ...... revised 6/24/2010
 # Revised InnerBevel and Round styles ............revised 6/24/2010
 # Added Size Argument ........................... revised 6/18/2010
@@ -193,7 +193,11 @@
 # NOTE: Some effects require the use of -fx and thus will be slower than the others. 
 # These include: the variations on bulge, concave, convex and pinch for IM versions 
 # prior to 6.4.3-7. The arc effect requires IM 6.3.5-5. The innerbevel and 
-# roundbevel require IM 6.5.9-1.
+# roundbevel require IM 6.5.9-1. Proper looking wedge effects likely require 
+# 6.5.7-0, when a bug in -distort BilinearForward was fixed. Prior to that, 
+# the script will -distort perspective and the wedge-top and wedge-bottom will 
+# not be properly centered. The other wedge effects may not be centered properly 
+# until after about 6.6.0-x.
 # 
 # Thanks to Aditya Naik for improvments on the techniques for generating the 
 # concave, convex, pinch and bulge effects.
@@ -584,7 +588,7 @@ fi
 
 # get IM version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 	
 # test acceptible versions for arc, innerbevel and roundbevel
 [ "$effect" = "arc-top" -a "$im_version" -lt "06030505" ] && errMsg "--- ARC EFFECT REQUIRES IM 6.3.5-5 OR HIGHER ---"
@@ -643,6 +647,9 @@ else
 	channels=""
 fi
 
+# separate text colors to get gradient colors if necessary
+tc1=`echo "${tc}-" | cut -d- -f1`
+tc2=`echo "${tc}-" | cut -d- -f2`
 
 # get dimensions for background image xc:
 if [ "$size" = "" ]; then
@@ -653,6 +660,12 @@ if [ "$size" = "" ]; then
 			-format "%wx%h" info:`
 	wd=`echo $dim | cut -dx -f 1`
 	ht=`echo $dim | cut -dx -f 2`
+	
+	# seems to be bug in IM such that -annotate makes image to short vertically (tested IM 6.8.5.10 and before)
+	# so make height 1.5 times larger from label
+	ht=`convert xc: -format "%[fx:1.5*$ht]" info:`
+	dim="${wd}x${ht}"
+
 elif [ "$size" != "" ]; then
 	test=`echo "$size" | tr "x" " " | wc -w`
 	[ $test -ne 1 ] && errMsg "--- WIDTH AND HEIGHT MAY NOT BE SPECIFIED TOGETHER ---"
@@ -690,10 +703,6 @@ elif [ "$size" != "" ]; then
 		point=`echo "$data" | cut -dx -f 3`
 	fi
 fi
-
-# separate text colors to get gradient colors if necessary
-tc1=`echo "${tc}-" | cut -d- -f1`
-tc2=`echo "${tc}-" | cut -d- -f2`
 
 # function to make directional gradient using -distort SRT
 # note: results are not same as makeGradient2
@@ -1153,17 +1162,15 @@ if [ "$effect" = "normal" ]
 		
 elif [ "$effect" = "wedge-right" -o "$effect" = "wedge-left" -o "$effect" = "wedge-top-left" -o "$effect" = "wedge-top-right" -o "$effect" = "wedge-bottom-left" -o "$effect" = "wedge-bottom-right" -o "$effect" = "wedge-top" -o "$effect" = "wedge-bottom" ]
 	then
-	if [ "$effect" = "wedge-top" -o "$effect" = "wedge-bottom" ]; then
-		if [ "$im_version" -ge "06050102" ]; then
-			distort="bilinearforward"
-		else
-			distort="perspective"
-		fi		
+	# note bilinearforward introduced at 6.5.1.2, but does not seem to work for 6.5.4.7 (on Godaddy).
+	# there is a bug fix at 6.5.7.0, so using that now for the version trap rather than 6.5.1.2
+	if [ "$im_version" -ge "06050700" ]; then
+		distort="bilinearforward"
 	else
 		distort="perspective"
 	fi
 	convert $tmpA0 $vp -background $bc \
-		-distort bilinearforward "$coords" \
+		-distort $distort "$coords" \
 		-background $bc -trim -bordercolor $bc -border $pad \
 		$tmpA0
 
@@ -1285,9 +1292,17 @@ elif [ "$effect" = "concave" -o "$effect" = "convex" -o "$effect" = "concave-top
 
 fi
 
+# IM 6.5.4.7 does not maintain transparent background when rotated with -rotate -- do not know exact version that fail -- 6.6.0.10 seems fine -- so use alternate test
+test1=`convert -size 1x1 xc:none -background none -rotate 20 -scale 1x1! -format "%[pixel:u.p{0,0}]" info:`
+if [ "$test1" = "none" -o "$im_version" -lt "06030500" ]; then
+	rotating="-rotate"
+else
+	rotating="-filter point +distort SRT"
+fi
+
 if [ "$rotation" != "0" -a "$rotation" != "0.0" -a "$rotation" != ".0" ]
 	then
-	convert $tmpA0 -background "$bc" -rotate $rotation $outfile
+	convert $tmpA0 -background "$bc" -virtual-pixel background $rotating $rotation +repage $outfile
 else
 	convert $tmpA0 $outfile
 fi

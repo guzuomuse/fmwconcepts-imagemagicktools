@@ -1,0 +1,359 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 12/8/2011 .......... revised 6/13/2013
+# 
+# USAGE: maxima [-r rad ] [-n num] [-t thresh] [-u units] [-d dist] [-m metric] 
+#	[-g graphic] infile [outfile]
+#
+# USAGE: maxima [-h or -help]
+# 
+# OPTIONS:
+#
+# -r     rad        x,y radii for masking out peaks; integer>0;
+#                   one value will be used for both dimensions;
+#                   default=5; 
+# -n     num        stopping number of maxima; integer>0; default=1
+# -t     thresh     graylevel (maxima amplitude) stopping threshold; 
+#                   integer>0; default=ignore argument
+# -u     units      units for graylevel threshold; choices are:
+#                   percent (p), raw (r), 8bit (8); default=percent
+# -d     dist       pixel distance for stopping; integer>0; 
+#                   default=ignore argument
+# -m     metric     compare metric; any valid IM metric; default=rmse
+# -g                display intermediate images
+# 
+# An optional output image may be specified which will be the input 
+# image with the masked areas showing where the maxima are located.
+#
+###
+# 
+# NAME: MAXIMA
+# 
+# PURPOSE: To locate one or more local maxima in a grayscale image.
+# 
+# DESCRIPTION: MAXIMA locates one or more local maxima in a grayscale 
+# image. It does this by finding the highest graylevel value and its 
+# location (via the compare function). Then it draws a black circle 
+# (ellipse) at that location and repeats the process. The process can 
+# be stopped by any combination of more than some number of maxima, 
+# the graylevel (amplitude) at a maxima is lower than some threshold 
+# value or the distance between any two maxima are less than some 
+# spacing distance. Each maxima location and its graylevel will be 
+# returned to the terminal. If the input is not grayscale it will be 
+# converted to grayscale.
+# 
+# Arguments: 
+# 
+# -r  rad ... RAD are the x,y radii for masking out peaks. Values are
+# integers>0. One value will be used for both dimensions. The default=5.
+# 
+# -n num ... NUM is the number of maxima used to stop the iterative 
+# process. Stopping occurs when the iteration exceeds the num value.
+# Values are integers>0. The default=1.
+# 
+# -t thresh ... THRESH is the graylevel (maxima amplitude) used as the
+# stopping threshold. Stopping occurs when a maxima graylevel is less 
+# than thresh. Values are integers>0. The default=ignore this argument.
+# 
+# -u units ... UNITS for the graylevel threshold. Choices are:
+# percent (or p), raw (or r), 8bit (or 8). The default=percent.
+# 
+# -d dist ... DISTANCE in pixels between maxima used for stopping. 
+# Stopping occurs when any two maxima are too close together, i.e. 
+# less than dist. Values are integers>0. The default=ignore this 
+# argument.
+# 
+# -m metric ... METRIC is the compare metric used to locate the maxima. 
+#  Any valid IM metric may be used. The default=rmse.
+# 
+# -g ... Indicates to display the intermediate masked images.
+# 
+# An optional output image may be specified which will be the input 
+# image with the masked areas showing where the maxima are located.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+rad=5			# mask x,y radii; default=5; integer>0
+num=1				# stopping number of maxima; ; integer>0; default=1
+thresh=0			# graylevel stopping threshold; integer>0; default=ignore
+units="percent"		# units for threshold: percent, 8bit, raw; default=percent
+dist=0				# pixel distance stopping; integer>0; default=ignore
+metric="rmse"		# compare metric
+graphic="no"		# display intermediate images
+
+# set directory for temporary files
+tmpdir="." 		# suggestions are tmpdir="." or tmpdir="/tmp"
+
+dir="$tmpdir/MAXIMA.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+	echo ""
+	usage2
+	exit 0
+elif [ $# -gt 15 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+		# get parameters
+		case "$1" in
+	  -h|-help)    # help information
+				   echo ""
+				   usage2
+				   ;;
+			-r)    # rad
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID RAD SPECIFICATION ---"
+				   checkMinus "$1"
+				   rad=`expr "$1" : '\([0-9]*,*[0-9]*\)'`
+				   [ "$num" = "" ] && errMsg "--- RAD=$rad MUST BE TWO COMMA SEPARATED NON-NEGATIVE INTEGER (with no sign) ---"
+				   ;;
+			-n)    # num
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID NUM SPECIFICATION ---"
+				   checkMinus "$1"
+				   num=`expr "$1" : '\([0-9]*\)'`
+				   [ "$num" = "" ] && errMsg "--- NUM=$num MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+				   test=`echo "$num <= 0" | bc`
+				   [ $test -eq 1 ] && errMsg "--- NUM=$num MUST BE A POSITIVE INTEGER ---"
+				   ;;
+			-t)    # thresh
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID THRESH SPECIFICATION ---"
+				   checkMinus "$1"
+				   thresh=`expr "$1" : '\([0-9]*\)'`
+				   [ "$thresh" = "" ] && errMsg "--- THRESH=$thresh MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+				   test=`echo "$thresh <= 0" | bc`
+				   [ $test -eq 1 ] && errMsg "--- THRESH=$thresh MUST BE A POSITIVE INTEGER ---"
+				   ;;
+		 	-u)    # units
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID UNITS SPECIFICATION ---"
+				   checkMinus "$1"
+				   # test mode values
+				   units="$1"
+				   units=`echo "$units" | tr "[:upper:]" "[:lower:]"`
+				   case "$units" in 
+				   		percent|p) units="percent";;
+				   		raw|r) units="raw";;
+				   		8bit|8) units="8bit";;
+						*) errMsg "--- UNITS=$units IS AN INVALID VALUE ---" 
+					esac
+				   ;;
+			-d)    # dist
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID DIST SPECIFICATION ---"
+				   checkMinus "$1"
+				   dist=`expr "$1" : '\([0-9]*\)'`
+				   [ "$dist" = "" ] && errMsg "--- DIST=$dist MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+				   test=`echo "$dist <= 0" | bc`
+				   [ $test -eq 1 ] && errMsg "--- DIST=$dist MUST BE A POSITIVE INTEGER ---"
+				   ;;
+		 	-m)    # metric
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID METRIC SPECIFICATION ---"
+				   checkMinus "$1"
+				   # test mode values
+				   metric="$1"
+				   metric=`echo "$metric" | tr "[:upper:]" "[:lower:]"`
+				   case "$metric" in 
+				   		ae) ;;
+						fuzz) ;;
+						mae) ;;
+						mepp) ;;
+						mse) ;;
+						ncc) ;;
+						pae) ;;
+						psnr) ;;
+						rmse) ;;
+						*) errMsg "--- METRIC=$metric IS AN INVALID VALUE ---" 
+					esac
+				   ;;
+			-g)    # set show
+				   graphic="yes"
+				   ;;
+			 -)    # STDIN and end of arguments
+				   break
+				   ;;
+			-*)    # any other - argument
+				   errMsg "--- UNKNOWN OPTION ---"
+				   ;;
+			*)     # end of arguments
+				   break
+				   ;;
+		esac
+		shift   # next option
+	done
+	# get infile and outfile
+	infile=$1
+	outfile=$2
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "--- NO INPUT FILE SPECIFIED ---"
+
+
+# test input image
+convert -quiet -regard-warnings "$infile" -colorspace gray +repage "$dir/tmpI.mpc" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+
+# get quantumrange
+qrange=`convert xc: -format "%[fx:quantumrange]" info:`
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using maxima.
+# with IM 6.7.4.10, 6.7.6.10, 6.8.5.10
+if [ "$im_version" -lt "06070606" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+
+# set up use of -subimage-search
+if [ "$im_version" -ge "06060306" ]; then
+	subimagesearch="-subimage-search"
+else
+	subimagesearch=""
+fi
+
+# set up radii
+radx=`echo $rad | cut -d, -f1`
+rady=`echo $rad | cut -d, -f2`
+test1=`echo "$radx <= 0" | bc`
+test2=`echo "$rady <= 0" | bc`
+[ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- RAD=$rad MUST BE TWO COMMA SEPARATED POSITIVE INTEGER ---"
+radii="${radx},${rady}"
+
+# set up for using (new) %[max] or (old) %[maxima]
+# notation changed somewhere between 6.7.4.10 and 6.7.7.7, but don't know where
+test=`convert rose: -quiet -format "%[maxima]" info:`
+if [ "$test" != "" ]; then
+	# old
+	maximum="maxima"
+else
+	# new
+	maximum="max"
+fi
+
+
+# find first maxima value
+val=`convert $dir/tmpI.mpc -format "%[$maximum]" info:`
+valfrac=`convert xc: -format "%[fx:$val/$qrange]" info:`
+valpct=`convert xc: -format "%[fx:100*$val/$qrange]" info:`
+val8=`convert xc: -format "%[fx:round(255*$valfrac)]" info:`
+[ "$units" = "percent" ] && threshold=$valpct
+[ "$units" = "8bit" ] && threshold=$val8
+[ "$units" = "raw" ] && threshold=$val
+
+# find first maxima location
+match=`compare -metric $metric $subimagesearch $dir/tmpI.mpc \( -size 1x1 xc:"gray($valpct%)" \) null: 2>&1`
+oldlocation=`echo $match | cut -d\  -f4`
+echo "$oldlocation gray=$val,$val8,$valpct%"
+
+# mask image
+convert $dir/tmpI.mpc -fill black -draw "translate $oldlocation ellipse 0,0 $radii 0,360" $dir/tmpI.mpc
+
+
+flag=""
+number=2
+while [ $number -le $num ]; do
+	[ "$graphic" = "yes" ] && convert $dir/tmpI.mpc show:
+	val=`convert $dir/tmpI.mpc -format "%[$maximum]" info:`
+	valfrac=`convert xc: -format "%[fx:$val/$qrange]" info:`
+	valpct=`convert xc: -format "%[fx:100*$val/$qrange]" info:`
+	val8=`convert xc: -format "%[fx:round(255*$valfrac)]" info:`
+	[ "$units" = "percent" ] && threshold=$valpct
+	[ "$units" = "8bit" ] && threshold=$val8
+	[ "$units" = "raw" ] && threshold=$val
+	test=`convert xc: -format "%[fx:$threshold < $thresh?1:0]" info:`
+	[ $test -eq 1 ] && break
+	match=`compare -metric $metric $subimagesearch $dir/tmpI.mpc \( -size 1x1 xc:"gray($valpct%)" \) null: 2>&1`
+	location=`echo $match | cut -d\  -f4`
+	x1=`echo $location | cut -d, -f1`
+	y1=`echo $location | cut -d, -f2`
+	for loc in $oldlocation; do
+		x2=`echo $loc | cut -d, -f1`
+		y2=`echo $loc | cut -d, -f2`
+		distance=`convert xc: -format "%[fx:round(hypot($x1-$x2,$y1-$y2))]" info:`
+		if [ $distance -lt $dist ]; then
+			flag="stop"
+			break
+		fi
+	done
+	[ "$flag" = "stop" ] && break
+	echo "$location gray=$val,$val8,$valpct%"
+	convert $dir/tmpI.mpc -fill black -draw "translate $location ellipse 0,0 $radii 0,360" $dir/tmpI.mpc
+	oldlocation="$oldlocation $location"
+	number=$((number+1))
+done
+
+[ "$outfile" != "" ] && convert $dir/tmpI.mpc -set colorspace $cspace $outfile
+
+exit 0
+

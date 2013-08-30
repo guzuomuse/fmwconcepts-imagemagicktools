@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/30/2007 .......... revised 5/2/2008
+# Developed by Fred Weinhaus 8/30/2007 .......... revised 6/10/2013
 #
 # USAGE: histog [-l labels] [-c number] [-rgb] infile [outfile]
 # USAGE: histog [-h or -help]
@@ -54,7 +54,7 @@
 # color is cyan, magenta, yellow, black/white for 4 channel infile
 #
 # -rgb indicates to convert the image from whatever colorspace it 
-# has to RGB before generating the histogram
+# has to sRGB/RGB before generating the histogram
 #
 # If no outfile is specified, then outfile will be named as 
 # infilename_hist.gif, where the suffix has been removed from infile 
@@ -116,16 +116,16 @@ checkMinus()
 	}
 #
 # function to get min, max, mean, std from Brightness channel (or Graylevel image)
-function imagestats
+imagestats()
 	{
 	data=`convert $1 -verbose info:`
-	min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$min" = "" ] && errMsg "--- MIN NOT FOUND --- "
-	max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$max" = "" ] && errMsg "--- MAX NOT FOUND --- "
-	mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$mean" = "" ] && errMsg "--- MEAN NOT FOUND --- "
-	std=`echo "$data" | sed -n '/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	std=`echo "$data" | sed -n 's/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$std" = "" ] && errMsg "--- STD NOT FOUND --- "
 	#
 	# express as percent
@@ -214,9 +214,10 @@ else
 	infile=$1
 	outfile=$2
 fi
-#
+
 # test that infile provided
 [ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
 # test that outfile provided
 if [ "$outfile" = "" ]
 	then
@@ -226,63 +227,96 @@ if [ "$outfile" = "" ]
 	outfile="$inname$hg.gif"
 #	outfile="$inname$hg$colorscheme.gif"
 fi
-#
+
 # setup temporary images and auto delete upon exit
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/histog_$$.mpc"
 tmpB="$dir/histog_$$.cache"
-tmp0="$dir/histog_0_$$.png"
-tmp1="$dir/histog_1_$$.png"
-tmp2="$dir/histog_2_$$.png"
-tmp3="$dir/histog_3_$$.png"
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
-#
+tmp0="$dir/histog_0_$$.mpc"
+tmp00="$dir/histog_0_$$.cache"
+tmp1="$dir/histog_1_$$.mpc"
+tmp11="$dir/histog_1_$$.cache"
+tmp2="$dir/histog_2_$$.mpc"
+tmp22="$dir/histog_2_$$.cache"
+tmp3="$dir/histog_3_$$.mpc"
+tmp33="$dir/histog_3_$$.cache"
+trap "rm -f $tmpA $tmpB $tmp0 $tmp00 $tmp1 $tmp11 $tmp2 $tmp22 $tmp3 $tmp33; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0 $tmp00 $tmp1 $tmp11 $tmp2 $tmp22 $tmp3 $tmp33" 1 2 3 15
+
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using histog.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.7
+# NOTE: slight very differences in histograms before and after 6.7.6.7
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	cspace="sRGB"
+else
+	cspace="RGB"
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
+
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
-		# get colorspace
-		data=`identify -verbose $tmpA`
-		colorspace=`echo "$data" | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
+		colorspace=`identify -ping -verbose $tmpA | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
 		num_labels=${#labelArr[*]}
 		if [ "$colorspace" = "CMYK" ]
 			then
 				# image is CMYK (detectable for jpg files)
-			 	convert $tmpA -channel C -separate $tmp0
-			 	convert $tmpA -channel M -separate $tmp1
-			 	convert $tmpA -channel Y -separate $tmp2
-			 	convert $tmpA -channel K -separate $tmp3
+			 	convert $tmpA $setcspace -channel C -separate $tmp0
+			 	convert $tmpA $setcspace -channel M -separate $tmp1
+			 	convert $tmpA $setcspace -channel Y -separate $tmp2
+			 	convert $tmpA $setcspace -channel K -separate $tmp3
 		elif [ $num_labels -eq 4 -o "$labels" = "4" ]
 			then
 				# convert to CMYK
-			 	convert $tmpA -colorspace CMYK -channel C -separate $tmp0
-			 	convert $tmpA -colorspace CMYK -channel M -separate $tmp1
-			 	convert $tmpA -colorspace CMYK -channel Y -separate $tmp2
-			 	convert $tmpA -colorspace CMYK -channel K -separate $tmp3
+			 	convert $tmpA $setcspace -colorspace CMYK -channel C -separate $tmp0
+			 	convert $tmpA $setcspace -colorspace CMYK -channel M -separate $tmp1
+			 	convert $tmpA $setcspace -colorspace CMYK -channel Y -separate $tmp2
+			 	convert $tmpA $setcspace -colorspace CMYK -channel K -separate $tmp3
 		elif [ "$colormodel" = "RGB" ]
 			then
-				# convert to RGB
-			 	convert $tmpA -colorspace RGB -channel R -separate $tmp0
-			 	convert $tmpA -colorspace RGB -channel G -separate $tmp1
-			 	convert $tmpA -colorspace RGB -channel B -separate $tmp2
-		elif [ "$colorspace" != "RGB" -a "$colorspace" != "CMYK" ]
+				# convert to sRGB/RGB
+			 	convert $tmpA $setcspace -colorspace $cspace -channel R -separate $tmp0
+			 	convert $tmpA $setcspace -colorspace $cspace -channel G -separate $tmp1
+			 	convert $tmpA $setcspace -colorspace $cspace -channel B -separate $tmp2
+		elif [ "$colorspace" != "sRGB" -a "$colorspace" != "RGB" -a "$colorspace" != "CMYK" ]
 			then
 				# this option is not currently possible as IM does not recognize other colorspaces from the image -verbose info:
-			 	convert $tmpA -colorspace $colorspace -channel R -separate $tmp0
-			 	convert $tmpA -colorspace $colorspace -channel G -separate $tmp1
-			 	convert $tmpA -colorspace $colorspace -channel B -separate $tmp2
-		elif [ "$colorspace" = "RGB" -o "$colorspace" = "Gray" ]
+			 	convert $tmpA $setcspace -colorspace $colorspace -channel R -separate $tmp0
+			 	convert $tmpA $setcspace -colorspace $colorspace -channel G -separate $tmp1
+			 	convert $tmpA $setcspace -colorspace $colorspace -channel B -separate $tmp2
+		elif [ "$colorspace" = "sRGB" -o "$colorspace" = "RGB" -o "$colorspace" = "Gray" ]
 			then
-				# as IM does not recognize other colorspaces, this option assumes user has a non-CMYK colorspace and use whatever it is
-			 	convert $tmpA -channel R -separate $tmp0
-			 	convert $tmpA -channel G -separate $tmp1
-			 	convert $tmpA -channel B -separate $tmp2
+			 	convert $tmpA $setcspace -channel R -separate $tmp0
+			 	convert $tmpA $setcspace -channel G -separate $tmp1
+			 	convert $tmpA $setcspace -channel B -separate $tmp2
 		else
 			errMsg "--- FILE $infile IS NOT IN RGB FORMAT ---"
 		fi
 	else
 		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
-#
+
 # get stats and add to label
 imagestats $tmp0
 labelArr[0]="${labelArr[0]} ($min,$max,$mean,$std)"
@@ -290,59 +324,60 @@ imagestats $tmp1
 labelArr[1]="${labelArr[1]} ($min,$max,$mean,$std)"
 imagestats $tmp2
 labelArr[2]="${labelArr[2]} ($min,$max,$mean,$std)"
-#
+
 if [ $num_labels -eq 4 -o "$labels" = "4" ]
 	then
 	imagestats $tmp3
 	labelArr[3]="${labelArr[3]} ($min,$max,$mean,$std)"
 	if [ $colorscheme -eq 1 ]
 		then
-		convert $tmp0 histogram:- | convert - -fill cyan -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -fill magenta -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -fill yellow -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
-		convert $tmp3 histogram:- | convert - -fill gray50 -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
+		convert $tmp0 histogram:- | convert - $setcspace -fill cyan -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -fill magenta -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -fill yellow -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp3 histogram:- | convert - $setcspace -fill gray50 -opaque white -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
 	elif [ $colorscheme -eq 2 ]
 		then
-		convert $tmp0 histogram:- | convert - -negate -fill cyan -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -negate -fill magenta -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -negate -fill yellow -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
-		convert $tmp3 histogram:- | convert - -negate -fill gray50 -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
+		convert $tmp0 histogram:- | convert - $setcspace -negate -fill cyan -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -negate -fill magenta -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -negate -fill yellow -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp3 histogram:- | convert - $setcspace -negate -fill gray50 -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
 	elif [ $colorscheme -eq 3 ]
 		then
-		convert $tmp0 histogram:- | convert - -bordercolor cyan -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -bordercolor magenta -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -bordercolor yellow -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
-		convert $tmp3 histogram:- | convert - -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
+		convert $tmp0 histogram:- | convert - $setcspace -bordercolor cyan -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -bordercolor magenta -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -bordercolor yellow -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp3 histogram:- | convert - $setcspace -bordercolor white -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
 	elif [ $colorscheme -eq 4 ]
 		then
-		convert $tmp0 histogram:- | convert - -negate -bordercolor cyan -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -negate -bordercolor magenta -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -negate -bordercolor yellow -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
-		convert $tmp3 histogram:- | convert - -negate -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
+		convert $tmp0 histogram:- | convert - $setcspace -negate -bordercolor cyan -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -negate -bordercolor magenta -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -negate -bordercolor yellow -border $bordersize -fill black -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp3 histogram:- | convert - $setcspace -negate -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[3]}'" $tmp3
 	fi
 else
 	if [ $colorscheme -eq 1 ]
 		then
-		convert $tmp0 histogram:- | convert - -fill red -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -fill green -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -fill blue -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp0 histogram:- | convert - $setcspace -fill red -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -fill green -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -fill blue -opaque white -bordercolor white -border $bordersize -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
 	elif [ $colorscheme -eq 2 ]
 		then
-		convert $tmp0 histogram:- | convert - -negate -fill red -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -negate -fill green -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -negate -fill blue -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp0 histogram:- | convert - $setcspace -negate -fill red -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -negate -fill green -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -negate -fill blue -opaque black -bordercolor black -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
 	elif [ $colorscheme -eq 3 ]
 		then
-		convert $tmp0 histogram:- | convert - -bordercolor red -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -bordercolor green -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -bordercolor blue -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp0 -define histogram:unique-colors=false histogram:- | convert - $setcspace -bordercolor red -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 -define histogram:unique-colors=false histogram:- | convert - $setcspace -bordercolor green -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 -define histogram:unique-colors=false histogram:- | convert - $setcspace -bordercolor blue -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
 	elif [ $colorscheme -eq 4 ]
 		then
-		convert $tmp0 histogram:- | convert - -negate -bordercolor red -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
-		convert $tmp1 histogram:- | convert - -negate -bordercolor green -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
-		convert $tmp2 histogram:- | convert - -negate -bordercolor blue -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
+		convert $tmp0 histogram:- | convert - $setcspace -negate -bordercolor red -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[0]}'" $tmp0
+		convert $tmp1 histogram:- | convert - $setcspace -negate -bordercolor green -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[1]}'" $tmp1
+		convert $tmp2 histogram:- | convert - $setcspace -negate -bordercolor blue -border $bordersize -fill white -font $fontname -pointsize $fontsize -draw "text $fontlocation '${labelArr[2]}'" $tmp2
 	fi
 fi
+
 # append into one image
 if [ $num_labels -eq 4 -o "$labels" = "4" ]
 	then

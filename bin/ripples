@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/19/2009 .......... revised 2/11/2009
+# Developed by Fred Weinhaus 1/19/2009 .......... revised 8/20/2012
 #
 # USAGE: ripples [-t type ] [-a amplitude] [-w width] [-o offset] [-r rmin] [-c center] [-p power ] [-s shadeval] infile outfile
 # USAGE: ripples [-h or -help]
@@ -255,6 +255,26 @@ tmp1="$dir/ripples_1_$$.miff"
 trap "rm -f $tmpA1 $tmpA2 $tmp1; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmp1; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using ripples.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+
 
 # read input and make sure OK
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA1"
@@ -284,24 +304,24 @@ hmr=`convert xc: -format "%[fx:$hh-$rmin]" info:`
 
 # process linear gradient into vertical ripple pattern
 if [ "$offset" = "0" -o "$offset" = "0.0" ]; then
-convert \( -size 1x${hmr} gradient: -negate \) \
-	-channel G \
-	-fx "-pow(($hmr-j)/$hh,$power)*0.5*sin(2*pi*u*$hh/$width)+0.5" \
-	-separate +channel \
-	\( -size 1x${rmin} xc:"gray(50%)" \) \
-	+swap -append \
-	-scale ${ww}x${hh}! \
-	$tmp1
+	convert \( -size 1x${hmr} gradient: -negate \) \
+		$setcspace -channel G \
+		-fx "-pow(($hmr-j)/$hh,$power)*0.5*sin(2*pi*u*$hh/$width)+0.5" \
+		-separate +channel \
+		\( -size 1x${rmin} xc:"gray(50%)" \) \
+		+swap -append \
+		-scale ${ww}x${hh}! \
+		$tmp1
 else
-convert \( -size 1x${width} gradient: -negate \) \
-	\( -size 1x${offset} xc:"gray(50%}" \) \
-	-append miff:- | \
-	convert \( -size 1x${hmr} tile:- \) \
-	\( -size 1x${rmin} xc:"gray(50%)" \) \
-	+swap -append \
-	-channel G -fx "-pow(($hh-j)/$hh,$power)*0.5*sin(2*pi*u)+0.5" -separate +channel \
-	-scale ${ww}x${hh}! \
-	$tmp1
+	convert \( -size 1x${width} gradient: -negate \) \
+		\( -size 1x${offset} xc:"gray(50%}" \) \
+		-append miff:- | \
+		convert \( -size 1x${hmr} tile:- \) \
+		\( -size 1x${rmin} xc:"gray(50%)" \) \
+		+swap -append \
+		$setcspace -channel G -fx "-pow(($hh-j)/$hh,$power)*0.5*sin(2*pi*u)+0.5" -separate +channel \
+		-scale ${ww}x${hh}! \
+		$tmp1
 fi
 
 
@@ -311,7 +331,11 @@ if [ "$type" = "displace" ]; then
 # do composite displace with tmp1
 # convert composite back to rectangular coords
 convert $tmpA1 -distort depolar -1,0,$cx,$cy $tmpA1
-composite $tmp1 $tmpA1 -displace 0x${amplitude} $tmpA1
+if [ "$im_version" -lt "06050304" ]; then
+	composite $tmp1 $tmpA1 -displace 0x${amplitude} $tmpA1
+else
+	convert $tmpA1 $tmp1 -define compose:args=0x${amplitude} -compose displace -composite $tmpA1
+fi
 convert $tmpA1 -distort polar -1,0,$cx,$cy $outfile
 
 elif [ "$type" = "modulate" ]; then

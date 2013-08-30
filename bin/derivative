@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/24/2007 .......... revised 3/5/2010
+# Developed by Fred Weinhaus 9/24/2007 .......... revised 8/5/2012
 # 
 # USAGE: derivative [-w width] [-a angle] [t thresh] [-m mix] infile outfile
 # USAGE: derivative [-h or -help]
@@ -321,7 +321,7 @@ if [ -f $infile -a -r $infile -a -s $infile ]
 fi
 
 # setup temporary images and auto delete upon exit
-tmp0="$dir/derivative_0_$$.png"
+tmp0="$dir/derivative_0_$$.miff"
 trap "rm -f $tmp0; exit 0" 0
 trap "rm -f $tmp0; exit 1" 1 2 3 15
 
@@ -414,8 +414,24 @@ else
 	threshoption=""
 fi
 
-convert $infile -convolve "$kernIM" $threshoption $tmp0
-[ $mix -lt 100 ] && composite -blend $mix $tmp0 $infile -matte $tmp0
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+	
+# IM7 uses correlate in place of convolve to achieve the same result
+# they vary by 180 degree rotation
+if [ "$im_version" -ge "07000000" ]; then
+	proc="-morphology correlate"
+else
+	proc="-convolve"
+fi
+
+echo "proc=$proc; threshoption=$threshoption;"
+
+# NOTE: improper nomalization for -convolve for zero sum (edge) filters between IM 6.7.6.6 and 6.7.8.7 (fixed 6.7.8.8)
+
+convert $infile $proc "$kernIM" $threshoption $tmp0
+#[ $mix -lt 100 ] && composite -blend $mix $tmp0 $infile $tmp0
+[ $mix -lt 100 ] && convert $infile $tmp0 -define compose:args=$mix -compose blend -composite $tmp0
 convert $tmp0 $outfile
 exit 0
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/2/2008 .......... revised 5/31/2010
+# Developed by Fred Weinhaus 1/2/2008 .......... revised 11/27/2011
 #
 # USAGE: colortemp [-t temperatures] [-f fov] [infile] outfile
 # USAGE: colortemp [-h or -help]
@@ -1079,7 +1079,7 @@ fi
 
 # get im version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # set up -recolor or -color-matrix
 if [ "$im_version" -lt "06060100" ]; then

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/22/2009 .......... revised 2/11/2009
+# Developed by Fred Weinhaus 1/22/2009 .......... revised 6/3/2013
 #
 # USAGE: bump [-t type] [-a amplitude] [-r radius] [-c center] [-m] [-b bgcolor] infile outfile
 # USAGE: bump [-h or -help]
@@ -212,7 +212,31 @@ tmp2="$dir/bump_2_$$.miff"
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 1" 1 2 3 15
 
-if convert -quiet -regard-warnings "$infile" +repage "$tmpA1"
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using bump.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.7, 6.7.9.1
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+if convert -quiet -regard-warnings "$infile" +repage $setcspace "$tmpA1"
 	then
 	: ' Do Nothing '
 else
@@ -242,7 +266,7 @@ hhh=`convert xc: -format "%[fx:$rad1+$hmr]" info:`
 
 # get im version
 im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # convert image to polar coords
 convert $tmpA1 -distort depolar -1,0,$cx,$cy $tmpA1
@@ -251,12 +275,12 @@ if [ $type -eq 1 ]; then
 #echo "sinusoid"
 	# create bump map equal to negative half sine wave
 	if [ "$im_version" -ge "06040805" ]; then
-		convert -size 1x${rad1} gradient: \
+		convert -size 1x${rad1} gradient:"gray(255)-gray(0)" \
 			-channel G -separate +channel \
 			-evaluate sine 0.5 -negate \
 			$tmp1
 	else
-		convert -size 1x${rad1} gradient: \
+		convert -size 1x${rad1} gradient:"gray(255)-gray(0)" \
 			-fx "0.5*sin(pi*u)+0.5" -negate \
 			$tmp1
 	fi
@@ -264,7 +288,7 @@ elif [ $type -eq 2 ]; then
 #echo "conic"
 	# create bump map as triangle peak downward
 	# need to use just slightly less than 50% in +level to avoid a black dot in the center
-	convert \( -size 1x${rad2} gradient: \) \
+	convert \( -size 1x${rad2} gradient:"gray(255)-gray(0)" \) \
 		\( +clone -negate \) -append \
 		-channel G -separate +channel \
 		+level 0%,49.999999% \
@@ -272,7 +296,7 @@ elif [ $type -eq 2 ]; then
 elif [ $type -eq 3 ]; then
 #echo "hemisphere"
 	# create bump map as lower half circle
-	convert \( -size 1x${rad2} gradient: \) \
+	convert \( -size 1x${rad2} gradient:"gray(255)-gray(0)" \) \
 		\( +clone -negate \) -append -negate \
 		-channel G -separate +channel \
 		-fx "sqrt(1-(u-1)*(u-1))" -negate \
@@ -280,7 +304,7 @@ elif [ $type -eq 3 ]; then
 		$tmp1
 : '
 	# alternate hemisphere
-	convert \( -size 1x${rad2} gradient: \) \
+	convert \( -size 1x${rad2} gradient:"gray(255)-gray(0)" \) \
 		\( +clone -negate \) -append -negate \
 		-channel G -separate +channel \
 		-negate +clone -compose multiply -composite \
@@ -301,7 +325,12 @@ profile -f 1 -c 0 $tmp1 bump_${type}_profile.png
 fi
 
 # displace image using gradient
-composite $tmp1 $tmpA1 -displace 0x${amp} $tmpA1
+if [ "$im_version" -lt "06050304" ]; then
+	composite $tmp1 $tmpA1 -displace 0x${amp} $tmpA1
+else
+	convert $tmpA1 $tmp1 -define compose:args=0x${amp} \
+		-compose displace -composite $tmpA1
+fi
 
 # convert back to rectangular coords
 convert $tmpA1 -distort polar -1,0,$cx,$cy $tmpA1

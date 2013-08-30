@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/15/2009 .......... revised 7/15/2009
+# Developed by Fred Weinhaus 7/15/2009 .......... revised 6/14/2013
 #
 # USAGE: screeneffects [-s spacing] [-r] [-t type] [-a amount] [-m method] [-c color] infile outfile
 # USAGE: screeneffects [-h or -help]
@@ -221,6 +221,31 @@ tmp2="$dir/screen_2_$$.miff"
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using screeneffects.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+
 # read the input image into the temp files and test validity.
 convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
@@ -245,25 +270,22 @@ yf=$avef
 
 # create screen mesh
 if [ "$rotation" = "no" ]; then
-	convert -size ${hh}x${ww} gradient: -rotate 90 \
+	convert -size ${hh}x${ww} gradient:"gray(255)-gray(0)" -rotate 90 \
 		-function sinusoid "$xf,0,.5,.5" $tmp1
-	convert -size ${ww}x${hh} gradient: -rotate 180 \
+	convert -size ${ww}x${hh} gradient:"gray(255)-gray(0)" -rotate 180 \
 		-function sinusoid "$yf,0,.5,.5" $tmp2
 
 elif [ "$rotation" = "yes" ]; then
-	convert -size ${maxdim}x${maxdim} gradient: \
+	convert -size ${maxdim}x${maxdim} gradient:"gray(255)-gray(0)" \
 		-distort SRT -45 \
 		-gravity center -crop ${ww}x${hh}+0+0 +repage \
 		-contrast-stretch 0 -function sinusoid "$xf,0,.5,.5" $tmp1
-	convert -size ${maxdim}x${maxdim} gradient: \
+	convert -size ${maxdim}x${maxdim} gradient:"gray(255)-gray(0)" \
 		-distort SRT 45 \
 		-gravity center -crop ${ww}x${hh}+0+0 +repage \
 		-contrast-stretch 0 -function sinusoid "$yf,0,.5,.5" $tmp2
 fi
 
-# get im version
-im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
 # composite color screen with image
 if [ "$type" = "simple" ]; then
@@ -273,7 +295,7 @@ if [ "$type" = "simple" ]; then
 		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
 	fi
 	convert $infile \( $tmp1 +level-colors ${bcolor},white \) $tmp1 \
-		-compose multiply -composite $outfile
+		 $setcspace -compose multiply -composite $outfile
 
 elif [ "$type" = "displace" -a "$method" = "1" ]; then
 	if [ "$im_version" -ge "06060904" ]; then 
@@ -281,15 +303,31 @@ elif [ "$type" = "displace" -a "$method" = "1" ]; then
 	else
 		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
 	fi
-	composite -displace ${amount}x${amount} $tmp1 $tmpA1 $outfile
+	if [ "$im_version" -lt "06050304" ]; then
+		composite -displace ${amount}x${amount} $tmp1 $tmpA1 $outfile
+	else
+		convert $tmpA1 $tmp1 $setcspace -define compose:args=${amount}x${amount} \
+			-compose displace -composite $outfile
+	fi
 elif [ "$type" = "displace" -a "$method" = "2" ]; then
-	composite -displace ${amount}x${amount} $tmp1 $tmpA1 $tmp2 $outfile
+	if [ "$im_version" -lt "06050304" ]; then
+		composite -displace ${amount}x${amount} $tmp1 $tmpA1 $tmp2 $outfile
+	else
+		convert $tmpA1 $tmp1 $tmp2 -define compose:args=${amount}x${amount} \
+			-compose displace -composite $outfile
+	fi
 elif [ "$type" = "displace" -a "$method" = "3" ]; then
 	if [ "$im_version" -ge "06060904" ]; then 
 		convert $tmp1 $tmp2 -evaluate-sequence mean -contrast-stretch 0 $tmp1
 	else
 		convert $tmp1 $tmp2 -average -contrast-stretch 0 $tmp1
 	fi
-	composite -displace ${amount}x${amount} $tmp2 $tmpA1 $tmp1 $outfile
+		if [ "$im_version" -lt "06050304" ]; then
+		composite -displace ${amount}x${amount} $tmp2 $tmpA1 $tmp1 $outfile
+	else
+		convert $tmpA1 $tmp2 $tmp1 -define compose:args=${amount}x${amount} \
+			-compose displace -composite $outfile
+	fi
+
 fi
 exit 0

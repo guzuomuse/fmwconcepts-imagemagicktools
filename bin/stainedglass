@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 6/12/2010 .......... 11/3/2010
+# Developed by Fred Weinhaus 6/12/2010 .......... 6/14/2013
 #
 # USAGE: stainedglass [-k kind] [-s size] [-o offset] [-n ncolors] [-b bright] [-e ecolor] [-t thick] [-r rseed] infile outfile
 # USAGE: stainedglass [-h or -help]
@@ -173,7 +173,7 @@ else
 					   size=`expr "$1" : '\([0-9]*\)'`
 					   [ "$size" = "" ] && errMsg "--- SIZE=$size MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
 					   test1=`echo "$size < 1" | bc`
-					   [ $test1 -eq 1 ] && errMsg "--- SIZE=$size MUST BE AN GREATER THAN 0 ---"
+					   [ $test1 -eq 1 ] && errMsg "--- SIZE=$size MUST BE A POSITIVE INTEGER ---"
 					   ;;
 				-o)    # get offset
 					   shift  # to get the next parameter
@@ -270,13 +270,26 @@ else
 	reduce=""
 fi
 
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+# colorspace swapped at IM 6.7.5.5, but not properly fixed until 6.7.6.6
+# before swap verbose info reported colorspace=RGB after colorspace=sRGB
+if [ "$im_version" -ge "06070606" ]; then
+	cspace1="sRGB"
+	cspace2="sRGBA"
+else
+	cspace1="RGB"
+	cspace2="RGBA"
+fi
+
 # get colorspace
 colorspace=`convert $infile -ping -format "%[colorspace]" info:`
 # set up for modulate
+# note there seems to be a change in -modulate (for HSL) between IM 6.8.4.6 and 6.8.4.7 that is noticeable in the output
 if [ "$bright" != "100" -a "$colorspace" = "CMYK" ]; then
-	modulation="-colorspace rgb -modulate ${bright},100,100 -colorspace cmyk"
+	modulation="-colorspace $cspace1 -modulate ${bright},100,100 -colorspace cmyk"
 elif [ "$bright" != "100" -a "$colorspace" = "CMYKA" ]; then
-	modulation="-colorspace rgba -modulate ${bright},100,100 -colorspace cmyka"
+	modulation="-colorspace $cspace2 -modulate ${bright},100,100 -colorspace cmyka"
 elif [ "$bright" != "100" ]; then
 	modulation="-modulate ${bright},100,100"
 else
@@ -286,10 +299,6 @@ fi
 # read the input image and filter image into the temp files and test validity.
 convert -quiet -regard-warnings "$infile" $reduce $modulation +repage "$tmpA1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
-
-# get IM version
-im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
 # test if -process module getcolors exists
 if [ "$im_version" -ge "06060210" ]; then
@@ -374,7 +383,13 @@ elif [ "$kind" = "square" ]; then
 fi
 
 if [ "$thick" = "0" ]; then
-	if [ "$im_version" -lt "06060210" -o "$process_test" != "getColors" ]; then
+	if [ "$im_version" -ge "06080310" ]; then
+		convert $tmpA1 \( -background black $tmpC \) \
+			-alpha off -compose copy_opacity -composite \
+			sparse-color:- |\
+			convert -size ${ww}x${hh} xc: -sparse-color voronoi '@-' \
+			$outfile
+	elif [ "$im_version" -lt "06060210" -o "$process_test" != "getColors" ]; then
 		echo ""
 		echo "Progress:"
 		echo ""
@@ -383,7 +398,7 @@ if [ "$thick" = "0" ]; then
 			txt:- |\
 			sed '1d; / 0) /d; s/:.* /,/;' |\
 			convert -size ${ww}x${hh} xc: -sparse-color voronoi '@-' \
-			$outfile
+			+monitor $outfile
 		echo ""
 	else
 		convert $tmpA1 \( -background black $tmpC \) \
@@ -394,7 +409,17 @@ if [ "$thick" = "0" ]; then
 	fi
 		
 else
-	if [ "$im_version" -lt "06060210" -o "$process_test" != "getColors" ]; then
+	if [ "$im_version" -ge "06080310" ]; then
+		convert $tmpA1 \( -background black $tmpC \) \
+			-alpha off -compose copy_opacity -composite \
+			sparse-color:- |\
+			convert -size ${ww}x${hh} xc: -sparse-color voronoi '@-' $tmpA2
+		convert -size ${ww}x${hh} xc: -sparse-color voronoi "@$tmpG" \
+			-auto-level -morphology edge diamond:$thick -threshold 0 -negate $tmpA3
+		convert $tmpA2 $tmpA3 -alpha off -compose copy_opacity -composite \
+			-compose over -background $ecolor -flatten \
+			$outfile
+	elif [ "$im_version" -lt "06060210" -o "$process_test" != "getColors" ]; then
 		echo ""
 		echo "Progress:"
 		echo ""
@@ -402,7 +427,7 @@ else
 			-alpha off -compose copy_opacity -composite -monitor \
 			txt:- |\
 			sed '1d; / 0) /d; s/:.* /,/;' |\
-			convert -size ${ww}x${hh} xc: -sparse-color voronoi '@-' $tmpA2
+			convert -size ${ww}x${hh} xc: -sparse-color voronoi '@-' +monitor $tmpA2
 		convert -size ${ww}x${hh} xc: -sparse-color voronoi "@$tmpG" \
 			-auto-level -morphology edge diamond:$thick -threshold 0 -negate $tmpA3
 		convert $tmpA2 $tmpA3 -alpha off -compose copy_opacity -composite \

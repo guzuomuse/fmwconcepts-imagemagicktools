@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Script Developed by Fred Weinhaus 2/24/2009 ........... revised 2/25/2009
+# Script Developed by Fred Weinhaus 2/24/2009 ........... revised 6/14/2013
 # Concept And Intial Example By Anthony Thyssen  ................ 2/13/2009
 #
 # USAGE: starburst [-r radius] [-g glow] [-c center] [-k contrast] [-t tcolor] [-b bcolor] [-f fcolor] [-a angle] [-n newseed] [-s size] [infile] outfile
@@ -293,15 +293,36 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "--- NO OUTPUT FILE SPECIFIED ---"
 
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
-
 tmpA="$dir/starburst_$$.mpc"
 tmpB="$dir/starburst_$$.cache"
 tmp0="$dir/starburst_0_$$.miff"
 tmp1="$dir/starburst_1_$$.miff"
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 1" 1 2 3 15
+
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using starburst
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
 
 
 if [ "$infile" != "" ]; then
@@ -352,7 +373,7 @@ glow1=`convert xc: -format "%[fx:4*$rad*$glow/100]" info:`
 if [ "$tcolor" = "white" ]; then
 	tint=""
 else
-	tint="-fill $tcolor -tint 100%"
+	tint="$setcspace -fill $tcolor -tint 100%"
 fi
 
 # set up level values for contrast control
@@ -389,7 +410,7 @@ fi
 # taper has shape of cosine raised to 1.5 power for reasonable rolloff
 # L5: use -compose screen so that will only brighten and not darken
 # L6: convert from polar back to rectangular coords
-convert -size ${mwh}x1 xc: $seed +noise Random -channel G -separate +channel \
+convert -size ${mwh}x1 xc: $seed +noise Random $setcspace -channel G -separate +channel \
 	$rot +level-colors $bcolor,$fcolor \
 	-size ${mwh}x${mwh1} xc:$bcolor -append -motion-blur ${rad}x65535-90 \
 	\( -size ${mwh}x${glow1}  gradient:$fcolor-$bcolor -evaluate cos .5 -negate -evaluate pow 1.5 \) \
@@ -403,7 +424,7 @@ if [ "$infile" = "" ]; then
 	\( $tmp0 -level ${loval},${hival}% $tint \) \
 		-geometry ${ox}${oy} -composite $outfile
 else
-	convert $tmpA \( $tmp0 -level ${loval},${hival}% $tint \) \
+	convert $tmpA \( $tmp0 -level ${loval},${hival}% $tint +write 1tmp1.jpg \) \
 		-geometry ${ox}${oy} -compose screen -composite $outfile
 fi
 exit 0

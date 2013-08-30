@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 11/2/2007 .......... revised 12/10/2010
+# Developed by Fred Weinhaus 11/2/2007 .......... revised 8/23/2012
 #
 # USAGE: magicwand x,y [-t threshold] [-f format] [-r region] [-m mask] [-c color] [-o opacity] infile outfile
 # USAGE: magicwand [-h or -help]
@@ -264,7 +264,7 @@ fi
 # create transparent mask for region=inside
 	# make interior transparent and outside black
 	convert $tmpA -fuzz $threshold% -fill none -draw "matte $coords floodfill" \
-		-fill black -colorize 100% $tmp0
+		-fill black +opaque none $tmp0
 		
 # create negative mask - for region=outside
 if [ "$region" = "outside" ]
@@ -319,7 +319,11 @@ elif [ "$format" = "image"  -a "$mask" = "layer" ]
 	then
 	opacity=`expr 100 - $opacity`
 	convert $tmp0 -fill $bgcolor -opaque black $tmp0
-	composite -dissolve $opacity% $tmp0 $tmpA $tmp0
+	if [ "$im_version" -lt "06050304" ]; then
+		composite -dissolve $opacity% $tmp0 $tmpA $tmp0
+	else
+		convert $tmpA $tmp0 -define compose:args=$opacity% -compose dissolve -composite $tmp0
+	fi
 fi
 convert $tmp0 $outfile
 exit 0

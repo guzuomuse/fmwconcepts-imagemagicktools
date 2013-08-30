@@ -1,23 +1,19 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/4/2010 .......... revised 4/4/2010
+# Developed by Fred Weinhaus 3/6/2013 .......... revised 6/4/2013
 # 
-# USAGE: cartoon [-m method] [-n numcolors] [-i imagefilter] [-e edgefilter] [-p pctedges] [-s smooth] infile outfile
+# USAGE: cartoon [-p pattern] [-n numlevels] [-e edgeamount] [-b brightness] [-s saturation] infile outfile
 # USAGE: cartoon [-h or -help]
 # 
 # OPTIONS:
 # 
-# -m      method            method of color reduction; choices are 1 or 2;
-#                           default=1
-# -n      numcolors         number of desired colors; integer>0; default=10
-# -i      imagefilter       size of median filter to preprocess image; 
-#                           integer>=0; default=2
-# -e      edgefilter        size of median filter to preprocess grayscale image 
-#                           before extracting gradient edges; integer>=0; default=2
-# -p      pctedges          percentage of edges to use from gradient images; 
-#                           0<=integer<=100; default=75
-# -s      smooth            size of blur filter to smooth the image before 
-#                           applying the edges; float>=0
+# -p      pattern           segmentation pattern (shape); 0<=integer<=100;
+#                           default=70
+# -n      numlevels         number of desired segmentation levels; integer>=2;
+#                           default=6
+# -e      edgeamount        amount of edges; float>=0; default=4
+# -b      brightness        brightness of cartoon; integer>=0; default=100
+# -s      saturation        saturation of cartoon; integer>=0; default=100
 # 
 ###
 # 
@@ -26,40 +22,28 @@
 # PURPOSE: To create a cartoon-like appearance to an image.
 # 
 # DESCRIPTION: CARTOON creates a cartoon-like appearance to an image. The 
-# image is color reduced to try to achieve the desired number of colors. There 
-# are two methods to do this. The first is not terribly sensitive to the 
-# desired number of colors. Values in the range of about 6-14 generally produce 
-# the same result. But the image can be a bit noisy/grainy, so post smoothing 
-# is generally needed. The second produces different results for different 
-# desired number of colors and generally is not as noise sensitive. Edges can 
-# then be superimposed onto the image. The edges are produced by a gradient 
-# edge detector.
+# image is smoothed and then multiplied by a grayscale version of the image 
+# with the desired number of levels to produce the segmented appearance.  
+# The pattern parameter changes the shape of the segmentation for the given 
+# number of levels. Edges are then superimposed onto the image. 
 # 
 # 
 # ARGUMENTS: 
 # 
-# -m method ... METHOD is the color reduction method. The choices are 1 or 2. 
-# Method 1 uses the IM -colors function channel-by-channel. Method 2 computes 
-# a -fx formula and is applied via -clut. The default=1
+# -p pattern ... PATTERN is the pattern or shape of the segmentation. Values 
+# are between 0 and 100. The default=70.
 # 
-# -n numcolors ... NUMCOLORS is the desired number of reduced colors. Values 
-# are integers>0. The default=10.
+# -n numlevels ... NUMLEVELS is the desired number of segmentation levels.  
+# Values are integers>=2. The default=6.
 # 
-# -i imagefilter ... IMAGEFILTER is the size of a median filter that will be 
-# applied to the image before reducing colors. Values are integers>=0. The 
-# default=2.
+# -e edgeamount ... EDGEAMOUNT is the amount of edges to overlay on the 
+# cartoon. Values are floats>=0. The default=4.
 # 
-# -e edgefilter ... EDGEFILTER is the size of a median filter that will be 
-# applied to a grayscale version of the image before extracting edges. Values 
-# are integers>=0. The default=2.
+# -b brightness ... BRIGHTNESS of the cartoon. Values are integer>=0. The
+# default=100 (no change).
 # 
-# -p pctedges ... PCTEDGES is the percentage of the edges from the gradient 
-# edge extraction from the grayscale image to overlay on the image. Values 
-# are 0<=integer<=100. The default=75.
-# 
-# -s smooth ... SMOOTH is the amount of (-blur) smoothing to apply to the color 
-# reduced image before the edges are overlayed. Values are floats>=0. 
-# The default=1.
+# -s saturation ... SATURATION of the cartoon. Values are integer>=0. The
+# default=150.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -69,12 +53,15 @@
 # 
 
 # set default values
-method=1			# color reduction method: 1 or 2
-numcolors=10		# number of colors
-imagefilter=2		# median filter image
-edgefilter=2		# median filter grayscale image for edges
-pctedges=75			# percent edge threshold
-smooth=1			# post smooth image before applying edges
+pattern=70			# segmentation pattern; 0<=integer<=100
+numlevels=6			# numlevels; integer>=2
+edgeamount=4		# edge amount; float>=0
+brightness=100		# brightness; integer>=0
+saturation=150		# saturation; integer>=0
+
+# fixed arguments
+edgewidth=2			# edge width; integer>=0
+edgethresh=90		# edge threshold; 0<=integer<=100
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -122,7 +109,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 14 ]
+elif [ $# -gt 12 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -135,59 +122,50 @@ else
 					   usage2
 					   exit 0
 					   ;;
-				-m)    # get method
+				-p)    # get pattern
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID METHOD SPECIFICATION ---"
+					   errorMsg="--- INVALID PATTERN SPECIFICATION ---"
 					   checkMinus "$1"
-					   method=`expr "$1" : '\([0-9]*\)'`
-					   [ "$method" = "" ] && errMsg "--- METHOD=$method MUST BE A NON-NEGATIVE INTEGER ---"
-					   [ $method -ne 1 -a $method -ne 2 ] && errMsg "--- METHOD=$method MUST BE EITHER 1 OR 2 ---"
+					   pattern=`expr "$1" : '\([0-9]*\)'`
+					   [ "$pattern" = "" ] && errMsg "--- PATTERN=$pattern MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$pattern < 0" | bc`
+					   test2=`echo "$pattern > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- PATTERN=$pattern MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
 					   ;;
-				-n)    # get  numcolors
+				-n)    # get  numlevels
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID NUMCOLORS SPECIFICATION ---"
+					   errorMsg="--- INVALID NUMLEVELS SPECIFICATION ---"
 					   checkMinus "$1"
-					   numcolors=`expr "$1" : '\([0-9]*\)'`
-					   [ "$numcolors" = "" ] && errMsg "--- NUMCOLORS=$numcolors MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
-					   test=`echo "$numcolors < 0" | bc`
-					   [ $test -eq 1 ] && errMsg "--- NUMCOLORS=$numcolors MUST BE A POSITIVE INTEGER ---"
+					   numlevels=`expr "$1" : '\([0-9]*\)'`
+					   [ "$numlevels" = "" ] && errMsg "--- NUMLEVELS=$numlevels MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test=`echo "$numlevels < 2" | bc`
+					   [ $test -eq 1 ] && errMsg "--- NUMLEVELS=$numlevels MUST BE AN INTEGER GREATER THAN 1 ---"
 					   ;;
-				-i)    # get  imagefilter
+				-e)    # get  edgeamount
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID IMAGEFILTER SPECIFICATION ---"
+					   errorMsg="--- INVALID EDGEAMOUNT SPECIFICATION ---"
 					   checkMinus "$1"
-					   imagefilter=`expr "$1" : '\([0-9]*\)'`
-					   [ "$imagefilter" = "" ] && errMsg "--- IMAGEFILTER=$imagefilter MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   edgeamount=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$edgeamount" = "" ] && errMsg "--- EDGEAMOUNT=$edgeamount MUST BE A NON-NEGATIVE FLOAT VALUE (with no sign) ---"
 					   ;;
-				-e)    # get  edgefilter
+				-b)    # get brightness
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID EDGEFILTER SPECIFICATION ---"
+					   errorMsg="--- INVALID BRIGHTNESS SPECIFICATION ---"
 					   checkMinus "$1"
-					   edgefilter=`expr "$1" : '\([0-9]*\)'`
-					   [ "$edgefilter" = "" ] && errMsg "--- EDGEFILTER=$edgefilter MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   brightness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$brightness" = "" ] && errMsg "--- BRIGHTNESS=$brightness MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
 					   ;;
-				-p)    # get pctedges
+				-s)    # get saturation
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID PCTEDGES SPECIFICATION ---"
+					   errorMsg="--- INVALID SATURATION SPECIFICATION ---"
 					   checkMinus "$1"
-					   pctedges=`expr "$1" : '\([0-9]*\)'`
-					   [ "$pctedges" = "" ] && errMsg "--- PCTEDGES=$pctedges MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
-					   test1=`echo "$pctedges < 0" | bc`
-					   test2=`echo "$pctedges > 100" | bc`
-					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- PCTEDGES=$pctedges MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
-					   ;;
-				-s)    # get  smooth
-					   shift  # to get the next parameter
-					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID SMOOTH SPECIFICATION ---"
-					   checkMinus "$1"
-					   smooth=`expr "$1" : '\([.0-9]*\)'`
-					   [ "$smooth" = "" ] && errMsg "--- SMOOTH=$smooth MUST BE A NON-NEGATIVE FLOAT (with no sign) ---"
+					   saturation=`expr "$1" : '\([0-9]*\)'`
+					   [ "$saturation" = "" ] && errMsg "--- SATURATION=$saturation MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -213,80 +191,78 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
-# setup temporary images and auto delete upon exit
+# setup temporary images
 tmpA1="$dir/cartoon_1_$$.mpc"
 tmpB1="$dir/cartoon_1_$$.cache"
 tmpA2="$dir/cartoon_2_$$.mpc"
 tmpB2="$dir/cartoon_2_$$.cache"
-tmpA3="$dir/cartoon_3_$$.mpc"
-tmpB3="$dir/cartoon_3_$$.cache"
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 0" 0
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 1" 1 2 3 15
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 1" 1 2 3 15
 
-# read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" -colorspace RGB +repage "$tmpA1" ||
-	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
-
-# define x and y derivative filters
-# DX
-# -1 0 1
-# -1 0 1
-# -1 0 1
-dx="-1,0,1,-1,0,1,-1,0,1"
-# DY
-# 1 1 1
-# 0 0 0
-# -1 -1 -1
-dy="1,1,1,0,0,0,-1,-1,-1"
-
-
-# set up color image median
-if [ $imagefilter -ne 0 ]; then
-	medianize1="-median $imagefilter"
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using cartoon.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.7.7, 6.8.3.7
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
 else
-	medianize1=""
+	setcspace=""
+fi
+if [ "$im_version" -le "06070707" ]; then
+	proc="-gamma 2.2"
+else
+	proc="-colorspace sRGB"
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	proc="-gamma 2.2"
 fi
 
-# set up grayscale image median
-if [ $edgefilter -ne 0 ]; then
-	medianize2="-median $edgefilter"
+# read the input image into the temporary cached image, convert to depth 8 and selective blur
+convert -quiet -regard-warnings "$infile" +repage -depth 8 -selective-blur 0x5+10% "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+ww=`identify -ping -format "%w" $tmpA1`
+hh=`identify -ping -format "%h" $tmpA1`
+
+# set up median filter
+if [ "$im_version" -ge "06060806" ]; then
+	medproc="-statistic median 3x3"
 else
-	medianize2=""
+	medproc="-median 3"
 fi
 
-# set up smoothing
-if [ "$smooth" != "0" ]; then
-	smoothing="-blur 0x$smooth"
-else
-	smoothing=""
-fi
 
-# reduce colors
-if [ $method -eq 1 ]; then
-	convert $tmpA1 $medianize1 -separate -colors $numcolors +dither \
-		-combine $smoothing $tmpA2
-else
-	convert \( $tmpA1 -median 2 \) \
-		\( -size 1x256 gradient: -rotate 90 \
-		-fx "floor(u*$numcolors+0.5)/$numcolors" \) \
-		-clut $tmpA2
-fi
+# convert to grayscale and posterize to create mask image
+# convert $tmpA1 -level 0x$pattern% $setcspace -colorspace gray -posterize $numlevels -colorspace $cspace -depth 8 $tmpA2
+convert $tmpA1 -level 0x$pattern% $setcspace -colorspace gray -posterize $numlevels -depth 8 $proc $tmpA2
 
-# create and composite image with edges
-if [ $pctedges -ne 0 ]; then
-	# create thresholded gradient edge image
-	convert \( $tmpA1 -colorspace gray $medianize2 \) \
-		\( -clone 0 -bias 50% -convolve "$dx" -solarize 50% \) \
-		\( -clone 0 -bias 50% -convolve "$dy" -solarize 50% \) \
-		\( -clone 1 -clone 1 -compose multiply -composite -gamma 2 \) \
-		\( -clone 2 -clone 2 -compose multiply -composite -gamma 2 \) \
-		-delete 0-2 -compose plus -composite -threshold ${pctedges}% $tmpA3
 
-	# composite with reduced color image
-	convert $tmpA2 $tmpA3 -compose multiply -composite $outfile
-else
-	convert $tmpA2 $outfile
-fi
-exit 0
+# process image
+# multiply the blurred posterized graycale mask with the smoothed input
+# convert smoothed input to grayscale
+# negate and blur
+# colordodge composite the grayscale and negated/blurred version to make edgewidth image
+# use power to amplify and then threshold and median filter
+# multiply composite the edgewidth with the blended image
+convert $tmpA1 \( $tmpA2 -blur 0x1 \) \
+	\( -clone 0 -clone 1 -compose over -compose multiply -composite -modulate $brightness,$saturation,100 \) \
+	\( -clone 0 $setcspace -colorspace gray \) \
+	\( -clone 3 -negate -blur 0x${edgewidth} \) \
+	\( -clone 3 -clone 4 -compose over -compose colordodge -composite \
+		-evaluate pow $edgeamount -threshold $edgethresh% $medproc \) \
+		-delete 0,1,3,4 -compose over -compose multiply -composite $outfile
 
+
+exit 0	

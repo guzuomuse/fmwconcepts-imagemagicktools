@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 4/14/2008 .......... revised 8/4/2008
+# Developed by Fred Weinhaus 4/14/2008 .......... revised 3/8/2012
 # 
 # USAGE: fisheye [-i ifov] [-o ofov] [-t type] [-f format] [-c xc,yc] [-r radius] [-a angle] [-m vpmethod] [-v vpcolor] [-b bgcolor] infile outfile
 # USAGE: fisheye [-h or -help]
@@ -19,7 +19,7 @@
 #                        center of the fisheye view; float; 
 #                        default=center of perspective image
 # -r      radius         radius of fisheye area in output image; float;
-#                        radius>0; default=min(width,height)
+#                        radius>0; default=min(width,height)/2
 # -a      angle          angle of rotation (clockwise) for the fisheye image;
 #                        float; 0<=angle<360; default=0
 # -m      vpmethod       vp is the virtual-pixel method; default=black
@@ -77,12 +77,12 @@
 # are non-negative floats.
 # 
 # -r radius ... RADIUS is the radius of the fisheye circular area in the 
-# output image. Values are floats greater than zero. The default is the 
+# output image. Values are floats greater than zero. The default is half the 
 # minimum value between the input image width and height. This parameter 
-# controls the scaling of the fisheye result. The default produces 
-# -f circular. If radius is set equal the diagonal dimension of the image, 
+# controls the scaling of the fisheye result. The default produces -f 
+# circular. If radius is set equal to half the diagonal dimension of the image, 
 # the result will be the same as specifying -f fullframe. A value for radius 
-# that is smaller than the minimum of the width and height will produce a 
+# that is smaller than half the minimum of the width and height will produce a 
 # smaller circular area.
 # 
 # -a angle ... ANGLE is the clockwise positive rotation angle for the output 
@@ -366,7 +366,7 @@ fi
 # stereographic: r=2*f*tan(phi/2); f=(r/2)/tan(phi/2); f=(N/4)/(tan((fov/4)*(pi/180)))=N/(4*tan(fov*pi/720))
 
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # define transform terms"
 
@@ -389,28 +389,30 @@ fi
 '
 
 # convert rd to phi according to type of fisheye
+# phi is now a reserved word in fx since Oct, 2011
+# so change phi to phiang
 if [ "$type" = "linear" ]
 	then
 	ofocinv=`convert xc: -format "%[fx:($ofov*pi)/($dim*180)]" info:`
-	phi="phi=$ofocinv*rd;"
+	phiang="phiang=$ofocinv*rd;"
 elif [ "$type" = "equalarea" ]
 	then
 	#note ofoc2inv rather than ofocinv to save computations
 	ofoc2inv=`convert xc: -format "%[fx:2*sin($ofov*pi/720)/$dim]" info:`
-	phi="phi=2*asin($ofoc2inv*rd);"
+	phiang="phiang=2*asin($ofoc2inv*rd);"
 elif [ "$type" = "orthographic" ]
 	then
 	ofocinv=`convert xc: -format "%[fx:2*sin($ofov*pi/360)/$dim]" info:`
-	phi="phi=asin($ofocinv*rd);"
+	phiang="phiang=asin($ofocinv*rd);"
 elif [ "$type" = "stereographic" ]
 	then
 	#note ofoc2inv rather than ofocinv to save computations
 	ofoc2inv=`convert xc: -format "%[fx:2*tan($ofov*pi/720)/$dim]" info:`
-	phi="phi=2*atan($ofoc2inv*rd);"
+	phiang="phiang=2*atan($ofoc2inv*rd);"
 fi
 
 #compute radius from perspective equation and phi
-rr="rr=$ifoc*tan(phi);"
+rr="rr=$ifoc*tan(phiang);"
 
 # convert rr (and theta unused due to shortcut) to x,y in input (source)
 # allow optional final image rotation
@@ -442,6 +444,6 @@ fi
 
 # process image
 	convert $tmpA $virtual -monitor -fx \
-		"$xd $yd $rd $phi $rr $xs $ys (rd>$dim2)?$bgc:u.p{xs,ys}" \
+		"$xd $yd $rd $phiang $rr $xs $ys (rd>$dim2)?$bgc:u.p{xs,ys}" \
 		$outfile
 exit 0

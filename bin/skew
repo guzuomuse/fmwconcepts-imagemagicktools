@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/6/2008 .......... 8/11/2008
+# Developed by Fred Weinhaus 8/6/2008 ..........1/21/2013
 #
 # USAGE: skew [-a amount] [-m mode] [-d direction] [-v vpmethod] [-b bgcolor] infile outfile
 # USAGE: skew [-h or -help]
@@ -53,7 +53,7 @@
 # e.g. png or gif. If none is specified and the output type does not support transparency, 
 # such as for jpg, then the resulting fill color will end up black.
 # 
-# IMPORTANT: This script works properly as of IM 6.4.2-7 when some fixes were made to 
+# REQUIREMENTS: This script works properly as of IM 6.4.2-7 when some fixes were made to 
 # -affine -transform. For IM versions prior to this, the script will work to skew the 
 # image. The virtual-pixel methods are ignored, But background color control may not 
 # work as specified. Results may end up with transparent areas even if undesired for 
@@ -226,6 +226,10 @@ else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
 # enable alpha processing if "transparent"
 if [ "$vpmethod" = "transparent" ]; then
 	proc="-channel rgba -alpha on"
@@ -234,55 +238,109 @@ elif [ "$vpmethod" = "background" -a "$bgcolor" = "none" ]; then
 else
 	proc=""
 fi
-	
-if [ "$mode" = "degrees" ]; then
-	case "$direction" in
-		b2r|B2R)	sinang=`convert xc: -format "%[fx:sin($amount*pi/180)]" info:`
-					convert $tmpA -affine 1,0,$sinang,1,0,0 \
-					$proc -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		b2l|B2L)	sinang=`convert xc: -format "%[fx:-sin($amount*pi/180)]" info:`
-					convert $tmpA -affine 1,0,$sinang,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		r2b|R2B)	sinang=`convert xc: -format "%[fx:sin($amount*pi/180)]" info:`
-					convert $tmpA -affine 1,$sinang,0,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		r2t|R2T)	sinang=`convert xc: -format "%[fx:-sin($amount*pi/180)]" info:`
-					convert $tmpA -affine 1,$sinang,0,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-	esac
 
-elif [ "$mode" = "pixels" ]; then
-   amount=`expr "$amount" : '\([0-9]*\)'`
-   [ "$amount" = "" ] && errMsg "AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER"
-	case "$direction" in
-		b2r|B2R)	sinang=`convert $tmpA -format "%[fx:$amount/h]" info:`
-					convert $tmpA -affine 1,0,$sinang,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		b2l|B2L)	sinang=`convert $tmpA -format "%[fx:-$amount/h]" info:`
-					convert $tmpA -affine 1,0,$sinang,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		r2b|R2B)	sinang=`convert $tmpA -format "%[fx:$amount/w]" info:`
-					convert $tmpA -affine 1,$sinang,0,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-		r2t|R2T)	sinang=`convert $tmpA -format "%[fx:-$amount/w]" info:`
-					convert $tmpA -affine 1,$sinang,0,1,0,0 \
-					$proc  -virtual-pixel $vpmethod -background $bgcolor \
-					-transform $outfile
-					;;
-	esac
+if [ "$im_version" -ge "06040208" ]; then
+	if [ "$mode" = "degrees" ]; then
+		case "$direction" in
+			b2r|B2R)	tanang=`convert xc: -format "%[fx:tan($amount*pi/180)]" info:`
+						convert $tmpA \
+						$proc -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,0,$tanang,1,0,0" $outfile
+						;;
+			b2l|B2L)	tanang=`convert xc: -format "%[fx:-tan($amount*pi/180)]" info:`
+echo "tanang=$tanang;"
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,0,$tanang,1,0,0" $outfile
+						;;
+			r2b|R2B)	tanang=`convert xc: -format "%[fx:tan($amount*pi/180)]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,$tanang,0,1,0,0" $outfile
+						;;
+			r2t|R2T)	tanang=`convert xc: -format "%[fx:-tan($amount*pi/180)]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,$tanang,0,1,0,0" $outfile
+						;;
+		esac
+	
+	elif [ "$mode" = "pixels" ]; then
+	   amount=`expr "$amount" : '\([0-9]*\)'`
+	   [ "$amount" = "" ] && errMsg "AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER"
+		case "$direction" in
+			b2r|B2R)	tanang=`convert $tmpA -format "%[fx:$amount/h]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,0,$tanang,1,0,0" $outfile
+						;;
+			b2l|B2L)	tanang=`convert $tmpA -format "%[fx:-$amount/h]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,0,$tanang,1,0,0" $outfile
+						;;
+			r2b|R2B)	tanang=`convert $tmpA -format "%[fx:$amount/w]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,$tanang,0,1,0,0" $outfile
+						;;
+			r2t|R2T)	tanang=`convert $tmpA -format "%[fx:-$amount/w]" info:`
+						convert $tmpA \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						+distort AffineProjection "1,$tanang,0,1,0,0" $outfile
+						;;
+		esac
+	fi
+else
+	if [ "$mode" = "degrees" ]; then
+		case "$direction" in
+			b2r|B2R)	tanang=`convert xc: -format "%[fx:tan($amount*pi/180)]" info:`
+						convert $tmpA -affine 1,0,$tanang,1,0,0 \
+						$proc -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			b2l|B2L)	tanang=`convert xc: -format "%[fx:-tan($amount*pi/180)]" info:`
+						convert $tmpA -affine 1,0,$tanang,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			r2b|R2B)	tanang=`convert xc: -format "%[fx:tan($amount*pi/180)]" info:`
+						convert $tmpA -affine 1,$tanang,0,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			r2t|R2T)	tanang=`convert xc: -format "%[fx:-tan($amount*pi/180)]" info:`
+						convert $tmpA -affine 1,$tanang,0,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+		esac
+	
+	elif [ "$mode" = "pixels" ]; then
+	   amount=`expr "$amount" : '\([0-9]*\)'`
+	   [ "$amount" = "" ] && errMsg "AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER"
+		case "$direction" in
+			b2r|B2R)	tanang=`convert $tmpA -format "%[fx:$amount/h]" info:`
+						convert $tmpA -affine 1,0,$tanang,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			b2l|B2L)	tanang=`convert $tmpA -format "%[fx:-$amount/h]" info:`
+						convert $tmpA -affine 1,0,$tanang,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			r2b|R2B)	tanang=`convert $tmpA -format "%[fx:$amount/w]" info:`
+						convert $tmpA -affine 1,$tanang,0,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+			r2t|R2T)	tanang=`convert $tmpA -format "%[fx:-$amount/w]" info:`
+						convert $tmpA -affine 1,$tanang,0,1,0,0 \
+						$proc  -virtual-pixel $vpmethod -background $bgcolor \
+						-transform $outfile
+						;;
+		esac
+	fi
 fi
 exit 0

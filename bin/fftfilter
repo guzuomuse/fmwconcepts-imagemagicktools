@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/18/2009 .......... revised 8/18/2009
+# Developed by Fred Weinhaus 8/18/2009 .......... revised 10/25/2011
 #
 # USAGE: fftfilter infile filtfile outfile
 # USAGE: fftfilter [-h or -help]
@@ -141,36 +141,22 @@ tmpA="$dir/fftfilter_A_$$.pfm"
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA; exit 1" 1 2 3 15
 
-# read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
-	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
-
-convert -quiet -regard-warnings "$filtfile" -alpha off -colorspace gray +repage "$tmpA2" ||
-	errMsg "--- FILE $filtfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
-
+# LAST TESTED with IM 6.7.4.10, 6.7.6.10, 6.8.0.2 all non-hdri on 10/24/2012
 
 # test for valid version of IM
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06050407" ] && errMsg "--- REQUIRES IM VERSION 6.5.4-7 OR HIGHER ---"
 
-# get image dimensions for later cropping as inputs are padded to square, even dimensions
-width=`identify -ping -format "%w" $tmpA1`
-height=`identify -ping -format "%h" $tmpA1`
 
-# get center point adjusted for padding an odd dimension to even
-cx=`convert xc: -format "%[fx:floor(($width+1)/2)]" info:`
-cy=`convert xc: -format "%[fx:floor(($height+1)/2)]" info:`
+# read the input image and test validity.
+convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
-# compute linear scaling parameter for filter image from its grayscale mean, 
-# which will be the DC value in the FFT image and thus generally the largest value.
-if [ "$im_version" -ge "06050410" ]; then
-	#HDRI was auto scaled by quantumrange
-	gain=`convert $tmpA2 -format "%[fx:1/mean]" info:`
-else
-	#HDRI was unscaled by quantumrange
-	gain=`convert $tmpA2 -format "%[fx:quantumrange/mean]" info:`
-fi
+# read the filter image and test validity.
+convert -quiet -regard-warnings "$filtfile" -alpha off +repage "$tmpA2" ||
+	errMsg "--- FILE $filtfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
 
 # test if image has alpha and set up copy to output
 is_alpha=`convert $tmpA1 -format "%A" info:`
@@ -181,12 +167,30 @@ else
 	addalpha=""
 fi
 
+
 : '
 For filtering, the magnitude of the fft of the image is multiplied by the filter
 F=A  filter fft
 P=Cexp(iD) image fft where i=sqrt(-1) and C is magnitude and D is phase 
 FxP= ACexp(iD)
 '
+
+# If image and filter are not even and square, then need to pad filter to size of expected fft
+# because the IM FFT will not tranform the filter correctly due to the IM FFT padding.
+# This can be demonstrated by doing -fft -ift on filter image and see that it is no longer centered
+
+# get image dimensions for later cropping as inputs are padded to square, even dimensions
+width=`identify -ping -format "%w" $tmpA2`
+height=`identify -ping -format "%h" $tmpA2`
+
+# get padded to even square size
+dim=`convert xc: -format "%[fx:floor((2*max($width,$height)+1)/2)]" info:`
+#echo "dim=$dim"
+
+# pad filter if needed
+if [ $dim -ne $width -o $dim -ne $height ]; then
+	convert $tmpA2 -gravity center -background black -extent ${dim}x${dim} $tmpA2
+fi
 
 # transform the image to magnitude and phase,
 # multiply magnitude by filter and use as produce magnitude

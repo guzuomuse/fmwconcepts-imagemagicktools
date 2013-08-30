@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 2/6/2010 .......... revised 2/11/2010
+# Developed by Fred Weinhaus 2/6/2010 .......... revised 6/1/2013
 # 
 # USAGE: 3Dreflection [-r rotate] [-f fade] [-o opacity] [-e exaggerate] [-b bcolor] [-z zoom] [-s shadow] [-a altitude] [-u umbra] [-p penumbra] infile outfile
 # USAGE: 3Dreflection [-h or -help]
@@ -307,21 +307,31 @@ trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 1" 1 2 3 15
 convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
 # get width and height of image and faded height
 ww=`convert $tmpA1 -ping -format "%w" info:`
 hh=`convert $tmpA1 -ping -format "%h" info:`
 hhr=`convert xc: -format "%[fx:$hh*$fade/100]" info:`
 xoff=`convert xc: -format "%[fx:-$ww/2]" info:`
-#echo "ww=$ww; hh=$hh; hhr=$hhr; xoff=$xoff"
+#echo "ww=$ww; hh=$hh; hhr=$hhr; xoff=$xoff; opacity=$opacity;"
+
+if [ "$im_version" -gt "06070707" ]; then
+	procgamma="-gamma 2.2"
+else
+	procgamma=""
+fi
 
 # append reflection and gap to image
 convert $tmpA1 \
 	\( -size ${ww}x${gap} xc:none \) \
 	\( -clone 0 -flip -crop ${ww}x${hhr}+0+0 +repage \) \
 	\( -clone 0 -alpha extract -flip -crop ${ww}x${hhr}+0+0 +repage \
-	-size ${ww}x${hhr} gradient: +level 0x${opacity}% \
+	-size ${ww}x${hhr} gradient: $procgamma +level 0x${opacity}% \
 	-compose multiply -composite \) \
-	\( -clone 2 -clone 3 -alpha off -compose copy_opacity -composite \) \
+	\( -clone 2 -clone 3 -alpha off -compose over -compose copy_opacity -composite \) \
 	-delete 2,3 -channel rgba -alpha on -append $tmpA2
 	
 # do 3D rotate
@@ -339,12 +349,18 @@ if [ "$shadow" = "on" ]; then
 	xpage=`convert xc: -format "%[fx:$width]" info:`
 	ypage=`convert xc: -format "%[fx:round((100*$oheight/(100+$fade))-$height-$height2-$penumbra-$gap)]" info:`
 
+if [ "$im_version" -lt "06080400" ]; then
+	channelize="-channel rgba"
+else
+	channelize=""
+fi
+
 	# compute shadow
 	convert \( -size ${width}x${height2} xc:none -fill "gray($umbra%)" \
 		-draw "polygon 0,$height2 $width,$height2 $width,0" \) \
 		\( -size ${width}x${height} xc:none -fill "gray($umbra%)" \
 		-draw "polygon 0,0 $width,0 $width,$height" \) \
-		-append -channel rgba -bordercolor none -border ${penumbra} \
+		-append $channelize -bordercolor "rgba(255,255,255,0)" -border ${penumbra} \
 		-blur ${penumbra}x65000 -gravity center -shave ${penumbra}x0 +repage \
 		$tmpA2
 

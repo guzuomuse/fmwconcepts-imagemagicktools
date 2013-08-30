@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/19/2008 .......... revised 8/3/2008
+# Developed by Fred Weinhaus 3/19/2008 .......... revised 7/5/2012
 #
 # USAGE: lupe [cenx,ceny] [-m mag] [-s shape] [-l lenx,leny] [-r round] [-b border] [-c color] [-d distort] infile outfile
 # USAGE: lupe [-h or -help]
@@ -247,9 +247,9 @@ fi
 
 tmpA="$dir/lupe_$$.mpc"
 tmpB="$dir/lupe_$$.cache"
-tmp0="$dir/lupe_0_$$.png"
-tmp1="$dir/lupe_1_$$.png"
-tmp2="$dir/lupe_2_$$.png"
+tmp0="$dir/lupe_0_$$.miff"
+tmp1="$dir/lupe_1_$$.miff"
+tmp2="$dir/lupe_2_$$.miff"
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2; exit 1" 1 2 3 15
 
@@ -329,11 +329,16 @@ lenyo=`convert xc: -format "%[fx:ceil($leny + $border/2)]" info:`
 if [ "$shape" = "square" ]
 	then
 	shape1="roundrectangle"
+	x1=`echo "scale=0; ($centsx - $lenx) / 1" | bc`
+	y1=`echo "scale=0; ($centsy - $leny) / 1" | bc`
+	x2=`echo "scale=0; ($centsx + $lenx) / 1" | bc`
+	y2=`echo "scale=0; ($centsy + $leny) / 1" | bc`
+	rx=$round
+	coordss="$x1,$y1 $x2,$y2 $rx,$rx"
 	x1=`echo "scale=0; ($centx - $lenx) / 1" | bc`
 	y1=`echo "scale=0; ($centy - $leny) / 1" | bc`
 	x2=`echo "scale=0; ($centx + $lenx) / 1" | bc`
 	y2=`echo "scale=0; ($centy + $leny) / 1" | bc`
-	rx=$round
 	coords="$x1,$y1 $x2,$y2 $rx,$rx"
 	x1i=`echo "scale=0; ($centx - $lenxi) / 1" | bc`
 	y1i=`echo "scale=0; ($centy - $lenyi) / 1" | bc`
@@ -348,6 +353,7 @@ if [ "$shape" = "square" ]
 elif [ "$shape" = "circle" ]
 	then
 	shape1="ellipse"
+	coordss="$centsx,$centsy $lenx,$leny 0,360"
 	coords="$centx,$centy $lenx,$leny 0,360"
 	coordsi="$centx,$centy $lenxi,$lenyi 0,360"
 	coordso="$centx,$centy $lenxo,$lenyo 0,360"
@@ -361,11 +367,13 @@ ipid2=`echo "scale=6; 1/$pid2" | bc`
 
 # create mask
 convert -size ${ws}x${hs} xc:black -fill white \
-	-draw "$shape1 $xc,$yc $lenx,$leny 0,360" $tmp0
+	-draw "$shape1 $coordss" $tmp0
+
+convert $tmp0 1tmp0.gif
 
 # IM version trap for use of newer -fx hypot function
 im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -ge "06030600" ]
 	then 
 	rd="rd=hypot(xd,yd);"
@@ -377,7 +385,7 @@ fi
 if [ "$distort" = "0" ]
 	then
 	# just use -distort SRT to magnify
-	convert $tmpA[$sub] -distort SRT "$xc,$yc  $mag  0" $tmp1
+	convert $tmpA[$sub] -distort SRT "$xc,$yc  $mag  0" +repage $tmp1
 
 elif [ "$shape" = "square" ]
 	then
@@ -386,7 +394,7 @@ echo "ffr"
 echo "fx"
 	convert $tmpA[$sub] -matte -channel RGBA -virtual-pixel transparent -monitor -fx \
 		"xd=(i-$xc)/$xc; yd=(j-$yc)/$yc; $rd $ffr xs=$isf*$xc*ffr*xd+$xc; ys=$isf*$yc*ffr*yd+$yc; (rd>1)?none:u.p{xs,ys}" \
-		$tmp1
+		+repage $tmp1
 
 elif [ "$shape" = "circle" ]
 	then
@@ -395,12 +403,17 @@ echo "ffr"
 echo "fx"
 	convert $tmpA[$sub] -matte -channel RGBA -virtual-pixel transparent -monitor -fx \
 		"xd=(i-$xc)/$xc; yd=(j-$yc)/$yc; $rd $ffr xs=$isf*$xc*ffr*xd+$xc; ys=$isf*$yc*ffr*yd+$yc; (rd>1)?none:u.p{xs,ys}" \
-		$tmp1
+		+repage $tmp1
 fi
 
+convert $tmp1 1tmp1.gif 
+
 # composite mask onto magnified subsection so outside is transparent, then composite result into orginal
-convert $tmpA \( $tmp1 $tmp0 $tmp0 -compose multiply -composite \) \
-	-geometry $sub -composite $tmp2
+convert $tmpA \( $tmp1 $tmp0 +matte -compose copy_opacity -composite -write 1tmpA.gif \) \
+	-geometry $sub -compose over -composite $tmp2
+
+convert $tmp2 1tmp2.gif 
+
 
 # add border
 if [ $border -ne 0 ]

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/26/2008 .......... revised 6/2/2008
+# Developed by Fred Weinhaus 5/26/2008 .......... revised 8/23/2012
 #
 # USAGE: zoomblur [-z zoom] [-e] infile outfile
 # USAGE: zoomblur [-h or -help]
@@ -152,6 +152,10 @@ else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
 rad=`convert $infile -format "%[fx:hypot(w/2,h/2)]" info:`
 zoomfrac=`convert xc: -format "%[fx:($amount-1)]" info:`
 iter=`convert xc: -format "%[fx:int($zoomfrac*$rad)]" info:`
@@ -179,7 +183,12 @@ while [ $i -le $iter ]
 	old=`convert xc: -format "%[fx:100-$new]" info:`
 	s=`convert xc: -format "%[fx:100*(1 + $zoomfrac*$i/$iter)]" info:`
 	convert $tmpA -resize $s% -gravity center -crop ${ww}x${hh}+0+0 +repage $tmpC
-	composite -blend $old%x$new% -gravity center $tmpA $tmpC $tmpA
+	if [ "$im_version" -lt "06050304" ]; then
+		composite -blend $old%x$new% -gravity center $tmpA $tmpC $tmpA
+	else
+		convert $tmpC $tmpA -gravity center -define compose:args=$old%x$new% \
+			-compose blend -composite $tmpA
+	fi
 	i=`expr $i + 1`
 done
 convert $tmpA $outfile

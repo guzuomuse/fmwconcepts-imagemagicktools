@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/30/2008 .......... revised 1/13/2009
+# Developed by Fred Weinhaus 12/30/2008 .......... revised 6/3/2013
 # 
 # USAGE: bordereffects [-s size] [-d density] [-c curviness] [-g granularity] [-b bgcolor] [-p pad] [-r reseed] infile outfile
 # USAGE: bordereffects [-h or -help]
@@ -222,8 +222,6 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
 
 # set temporary file
 tmpA1="$dir/bordereffects_A_$$.mpc"
@@ -233,6 +231,36 @@ tmp1="$dir/bordereffects_1_$$.miff"
 tmp2="$dir/bordereffects_2_$$.miff"
 trap "rm -f $tmpA1 $tmpA2 $tmp0 $tmp1 $tmp2; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmp0 $tmp1 $tmp2; exit 1" 1 2 3 15
+
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using bordereffects
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.1
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
 
 
 # test infile
@@ -282,20 +310,23 @@ else
 fi
 
 
-# get im version
-im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
-
-
 # create noise image with specified granularity
 convert -size ${ww}x${hh} xc: $seed +noise Random \
 	$scale \
 	$blur \
-	-colorspace gray -contrast-stretch 0% \
+	$setcspace -colorspace gray -contrast-stretch 0% \
     $tmp1
 
 # process black/white with noise image as displacement map
-if [ "$im_version" -ge "06040805" ]; then
+if [ "$im_version" -ge "06050304" ]; then
+# create multi-image miff (sine tmpA1 cosine)
+convert $tmp1 \
+	-channel R -evaluate sine $density \
+	-channel G -evaluate cosine $density \
+	-channel RG -separate $tmp0 -insert 0 \
+	-define compose:args=${size}x${size} \
+	-compose displace -composite $tmp2
+elif [ "$im_version" -ge "06040805" ]; then
 # create multi-image miff (sine tmpA1 cosine), then pass to composite -displace
 convert $tmp1 \
 	-channel R -evaluate sine $density \
@@ -317,6 +348,8 @@ fi
 
 
 # merge images
+# trim and recenter
 convert \( -size ${ww}x${hh} xc:"$bgcolor" \) $tmpA1 $tmp2 \
-	-compose over -composite $outfile
+	-compose over -composite \
+	-trim +repage -gravity center -background "$bgcolor" -extent ${ww}x${hh} $outfile
 exit 0

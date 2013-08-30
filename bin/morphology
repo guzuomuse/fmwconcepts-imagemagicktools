@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Modified by Fred Weinhaus 4/2/2009 ............ revised 12/18/2009
+# Modified by Fred Weinhaus 4/2/2009 ............ revised 4/18/2012
 # Enhanced by Anthony Thyssen ................... revised 1/8/2009
 # Developed by Fred Weinhaus 11/5/2007 .......... revised 4/26/2008
 # 
@@ -337,12 +337,12 @@ if [ "$mode" = "binary" ]; then
 
   if [ "$type" = "dilate" ]; then
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
     done
 
   elif [ "$type" = "erode" ]; then
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
     done
 
   elif [ "$type" = "close" -o "$type" = "bottomhat" ]; then
@@ -350,10 +350,10 @@ if [ "$mode" = "binary" ]; then
       convert $TMP $TMPOLD
     fi
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
     done
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
     done
     if [ "$type" = "bottomhat" ]; then
       convert $TMP $TMPOLD +swap -compose minus -composite $TMP
@@ -364,10 +364,10 @@ if [ "$mode" = "binary" ]; then
       convert $TMP $TMPOLD
     fi
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
     done
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
     done
     if [ "$type" = "tophat" ]; then
       convert $TMPOLD $TMP +swap -compose minus -composite $TMP
@@ -377,20 +377,20 @@ if [ "$mode" = "binary" ]; then
     convert $TMP $TMPORIG
   	# dilate
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 $TMP
     done
     convert $TMP $TMPOLD
     convert $TMPORIG $TMP
     # erode
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% $TMP
     done
     # dilate - erode
     convert $TMPOLD $TMP +swap -compose minus -composite $TMP
 
   elif [ "$type" = "majority" ]; then
     for ((i=1; i<=$iter; i++)); do
-      convert $TMP -convolve "1,1,1,1,1,1,1,1,1" -threshold 50% $TMP
+      convert $TMP -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 50% $TMP
     done
 
   elif [ "$type" = "feather" ]; then
@@ -402,11 +402,11 @@ if [ "$mode" = "binary" ]; then
 	fi
 
   elif [ "$type" = "edgeout" ]; then
-    convert $TMP \( +clone -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 \) \
+    convert $TMP \( +clone -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 0 \) \
             -compose difference -composite -threshold 99% $TMP
 
   elif [ "$type" = "edgein" ]; then
-    convert $TMP \( +clone -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% \) \
+    convert $TMP \( +clone -define convolve:scale=\! -convolve "1,1,1,1,1,1,1,1,1" -threshold 99% \) \
             -compose difference -composite -threshold 99% $TMP
 
   elif [ "$type" = "thin" ]; then

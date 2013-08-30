@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/27/2008 .......... revised 2/11/2009
+# Developed by Fred Weinhaus 5/27/2008 .......... revised 6/4/2013
 #
 # USAGE: disperse [-s spread] [-d density] [-c curviness] [-r reseed] infile outfile
 # USAGE: disperse [-h or -help]
 #
 # OPTIONS:
 #
-# -s      spread             spread distance of dispersion; integer>0; default=5
-# -d      density            density or frequency of detail; integer>0; default=5
+# -s      spread             spread distance of dispersion; integer>=0; default=5
+# -d      density            density or frequency of detail; integer>=0; default=5
 # -c      curviness          curviness/clumpiness of dispersion; integer>=0; default=5
 #                            low values produce fine dust-like detail;
 #                            larger values produce larger clumpy/curvy clusters;
@@ -25,11 +25,11 @@
 # 
 # OPTIONS: 
 # 
-# -s spread ... SPREAD distance of dispersion. Values are integers>0.
+# -s spread ... SPREAD distance of dispersion. Values are integers>=0.
 # Typical values range from 2 to 20. The default=5
 #
 # -d density ... DENSITY is the closeness or frequency of detail. Values are 
-# integers>0. The default=5.
+# integers>=0. The default=5.
 #
 # -c curviness ... CURVINESS/CLUMPINESS of dispersion. Values are integers>=0.
 # Small values produce fine, dust-like detail. Larger values produce more 
@@ -120,8 +120,8 @@ else
 					   checkMinus "$1"
 					   spread=`expr "$1" : '\([0-9]*\)'`
 					   [ "$spread" = "" ] && errMsg "SPREAD=$spread MUST BE AN INTEGER"
-		   			   spreadtest=`echo "$spread < 1" | bc`
-					   [ $spreadtest -eq 1 ] && errMsg "--- SPREAD=$spread MUST BE A POSITIVE INTEGER ---"
+#		   			   spreadtest=`echo "$spread < 1" | bc`
+#					   [ $spreadtest -eq 1 ] && errMsg "--- SPREAD=$spread MUST BE A POSITIVE INTEGER ---"
 					   ;;
 				-d)    # get density
 					   shift  # to get the next parameter - density
@@ -130,8 +130,8 @@ else
 					   checkMinus "$1"
 					   density=`expr "$1" : '\([0-9]*\)'`
 					   [ "$density" = "" ] && errMsg "DENSITY=$density MUST BE AN INTEGER"
-		   			   densitytest=`echo "$density < 1" | bc`
-					   [ $densitytest -eq 1 ] && errMsg "--- DENSITY=$density MUST BE A POSITIVE INTEGER ---"
+#		   			   densitytest=`echo "$density < 1" | bc`
+#					   [ $densitytest -eq 1 ] && errMsg "--- DENSITY=$density MUST BE A POSITIVE INTEGER ---"
 					   ;;
 				-c)    # get curviness
 					   shift  # to get the next parameter - curviness
@@ -140,8 +140,8 @@ else
 					   checkMinus "$1"
 					   curviness=`expr "$1" : '\([0-9]*\)'`
 					   [ "$curviness" = "" ] && errMsg "CURVINESS=$curviness MUST BE A NON-NEGATIVE INTEGER"
-		   			   curvinesstest=`echo "$curviness < 0" | bc`
-					   [ $curvinesstest -eq 1 ] && errMsg "--- CURVINESS=$curviness MUST BE A POSITIVE INTEGER ---"
+#		   			   curvinesstest=`echo "$curviness < 0" | bc`
+#					   [ $curvinesstest -eq 1 ] && errMsg "--- CURVINESS=$curviness MUST BE A POSITIVE INTEGER ---"
 					   ;;
 				-r)    # get  reseed
 					   shift  # to get the next parameter
@@ -182,6 +182,30 @@ tmp0="$dir/disperse_0_$$.miff"
 trap "rm -f $tmpA1 $tmpA2 $tmp0; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmp0; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using disperse
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.1
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
 
 # read input and make sure OK
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA1"
@@ -213,18 +237,26 @@ fi
 
 # get im version
 im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 
 # create noise image with specified curviness
 convert -size ${ww}x${hh} xc: $seed +noise Random \
 	-virtual-pixel tile $smooth  \
-	-colorspace gray -contrast-stretch 0% \
+	$setcspace -colorspace gray -contrast-stretch 0% \
     $tmp0
 
 
 # process image with noise image as displacement map
-if [ "$im_version" -ge "06040805" ]; then
+if [ "$im_version" -ge "06050304" ]; then
+# create multi-image miff (sine tmpA1 cosine)
+convert $tmp0 \
+	-channel R -evaluate sine $density \
+	-channel G -evaluate cosine $density \
+	-channel RG -separate $tmpA1 -insert 0 \
+	-define compose:args=${spread}x${spread} \
+	-compose displace -composite $outfile
+elif [ "$im_version" -ge "06040805" ]; then
 # create multi-image miff (sine tmpA1 cosine), then pass to composite -displace
 convert $tmp0 \
 	-channel R -evaluate sine $density \

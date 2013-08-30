@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Revised by Fred Weinhaus ...................... revised 8/24/2010
+# Revised by Fred Weinhaus ...................... revised 5/27/2013
 # Revised by Anthony Thyssen to add -b option ... revised 8/24/2010
 # Developed by Fred Weinhaus 1/30/2010 .......... revised 7/7/2010
 # 
@@ -34,11 +34,11 @@
 # PURPOSE: To crop and unrotate multiple images from a scanned image.
 # 
 # DESCRIPTION: MULTICROP crops and unrotates multiple images from a scanned image.
-# The images must be well separate so that background color shows between them. 
-# The process uses a floofill technique based upon a seed coordinate and a fuzz 
+# The images must be well separated so that background color shows between them. 
+# The process uses a floodfill technique based upon a seed coordinate and a fuzz 
 # value to separate the individual images from the background of the scan. 
 # The correct choice of fuzz factor is very important. If too small, the images 
-# will not be separate. If too larger, parts of the outer area of the image 
+# will not be separate. If too large, parts of the outer area of the image 
 # containing similar colors will be lost and the image may be separated into 
 # multiple parts. There are two unrotate methods. The first uses the IM deskew 
 # function, but is limited to 5 degrees of rotate or less. The second uses my 
@@ -66,7 +66,7 @@
 # allowed. The default is to use option -c.
 # 
 # -f fuzzval ... FUZZVAL is the fuzz amount specified as an integer percent
-# value between 0 to 100 (without the % sign). # The correct choice of fuzz
+# value between 0 to 100 (without the % sign). The correct choice of fuzz
 # factor is very important. If too small, the images will not be separate.
 # If too larger, parts of the outer area of the image containing similar
 # colors will be lost and the image may be separated into multiple parts.
@@ -107,7 +107,7 @@
 #
 
 # set default values 
-coords="0,0"			# initial coord for finding background color
+coords=""			# initial coord for finding background color
 bcolor=""      			# initial background color
 fuzzval=10 				# fuzz amount in percent for making background transparent
 grid=10					# grid spacing in percent image
@@ -189,10 +189,10 @@ else
 				   coords=$1
 				   # further testing done later
 				   ;;
-			-b)    # coords
+			-b)    # bcolor
 				   shift  # to get the next parameter
 				   # test if parameter starts with minus sign
-				   errorMsg="--- INVALID COORDS SPECIFICATION ---"
+				   errorMsg="--- INVALID BCOLOR SPECIFICATION ---"
 				   checkMinus "$1"
 				   bcolor=$1
 				   ;;
@@ -241,8 +241,10 @@ else
 fi
 
 # test if both bcolor and coords specified at the same time
-if [ "X$bcolor" != "X" -a "X$coods" != "X" ]; then
+if [ "X$bcolor" != "X" -a "X$coords" != "X" ]; then
   errMsg "--- BACKGROUND COLOR AND COODINATES CAN NOT BE USED TOGETHER ---"
+elif [ "X$bcolor" = "X" -a "X$coords" = "X" ]; then
+	coords="0,0"
 fi
 
 # test that infile provided
@@ -285,7 +287,7 @@ height=`identify -ping -format "%h" $tmpA1`
 
 
 # get color at user specified location
-if [ "X$bgcolor" != "X" ]; then
+if [ "X$bcolor" != "X" ]; then
 	coords="0,0"
 else
 	widthm1=`convert xc: -format "%[fx:$width-1]" info:`
@@ -305,9 +307,9 @@ else
 		[0-9]*,[0-9]*)   coords=$coords ;;
 		*)  errMsg "--- INVALID COORDS ---" ;;
 	esac
-	bgcolor=`convert $tmpA1 -format "%[pixel:u.p{$coords}]" info:`
+	bcolor=`convert $tmpA1 -format "%[pixel:u.p{$coords}]" info:`
 fi
-#echo "bgcolor=$bgcolor"
+#echo "bcolor=$bcolor"
 
 
 # get grid spacing
@@ -319,7 +321,7 @@ num=`convert xc: -format "%[fx:round(100/$grid) - 2]" info:`
 
 # add a border, and flood fill from all edges inward
 convert $tmpA1 -fuzz ${fuzzval}% -fill none \
-	-bordercolor $bgcolor -border 1x1 \
+	-bordercolor $bcolor -border 1x1 \
 	-draw "matte $coords floodfill" \
 	-shave 1x1 -fill red +opaque none \
 	$tmpA2
@@ -355,7 +357,7 @@ for ((j=0;j<=$num;j++))
 		# test if found color other than "none" (i.e. red)
 		testcolor=`convert $tmpA2 -channel rgba -alpha on -format \
 			"%[fx:u.p{$x,$y}=="none"?0:1]" info:` 
-#		echo "$x $y $testcolor"
+		echo "$x $y $testcolor"
 		if [ $testcolor -eq 1 ]; then
 			echo "Processing Image $k"
 			# Take red and none mask.
@@ -380,8 +382,8 @@ for ((j=0;j<=$num;j++))
 			# Then trim and deskew/unrotate to make the output.
 			if [ $unrotate -eq 1 -o $unrotate -eq 3 ]; then
 				convert $tmpA1 $tmpA4 -compose multiply -composite \
-					-fuzz ${fuzzval}% -trim -background "$bgcolor" $derotate \
-					-compose over -bordercolor "$bgcolor" -border 2 -trim +repage \
+					-fuzz ${fuzzval}% -trim -background "$bcolor" $derotate \
+					-compose over -bordercolor "$bcolor" -border 2 -trim +repage \
 					${outname}-${k}.${suffix}
 			elif [ $unrotate -eq 2 ]; then
 				convert $tmpA1 $tmpA4 -compose multiply -composite \

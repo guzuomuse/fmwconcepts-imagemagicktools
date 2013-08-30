@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/11/2008 .......... revised 9/27/2010
+# Developed by Fred Weinhaus 3/11/2008 .......... revised 3/29/2013
 #
 # USAGE: picframe [-f frameid] [-m mattesize] [-c mattecolor] [-b bordersize] [-s shade] [-a adjust] [-o opacity ] [-d distance] infile outfile
 # USAGE: picframe [-h or -help]
@@ -160,7 +160,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 16 ]
+elif [ $# -gt 18 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -269,10 +269,6 @@ fi
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
 
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
-
-
 tmpA="$dir/picframe_$$.mpc"
 tmpB="$dir/picframe_$$.cache"
 tmp0A="$dir/picframe_0_$$.mpc"
@@ -294,6 +290,10 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmp0A"
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 
 # get frame bottom right (SouthEast) corner image
@@ -352,7 +352,12 @@ elif [ $shade -lt 100 ]
 	else
 		convert -size ${w3}x${h3} xc:none -bordercolor none \
 			-compose Dst -frame ${w2}x${h2}+0+${w2} $tmp2A
-		composite -blend $shade% $tmp2A $tmp1A $tmp1A
+		if [ "$im_version" -lt "06050304" ]; then
+			composite -blend $shade% $tmp2A $tmp1A $tmp1A
+		else
+			convert $tmp1A $tmp2A -define compose:args=$shade% \
+				-compose blend -composite $tmp1A
+		fi
 		convert \( $tmp1A -modulate $adjust \) \
 		\( $tmp0A -bordercolor black -border ${bordersize}x${bordersize} \
 			-bordercolor $mattecolor -border ${mattesize}x${mattesize} \) \
@@ -363,12 +368,48 @@ fi
 
 # add shadow
 if [ "$distance" != "0" ]; then
-#	blur=`convert xc: -format "%[fx:$distance/2]" info:`
-	blur=`convert xc: -format "%[fx:min($distance-1,2*$distance/3)]" info:`
+	border=`convert xc: -format "%[fx:$distance/2]" info:`
+	offset=`convert xc: -format "%[fx:round($distance+$border)]" info:`
+	www=$((w3+distance))
+	hhh=$((h3+distance))
+	# read framed image
+	# make new white image and add black border of size=distance
+	# convert white to transparent and (important) convert to transparent black
+	# add shadow
+	# crop to input size
+	# center composite over input
 	convert $tmp3A \
-		\( $tmp2A -background black -shadow ${opacity}x${blur}+${distance}+${distance} \
-		-gravity center -crop ${w3}x${h3}-${distance}-${distance} +repage \) \
+		\( -size ${w3}x${h3} xc:white -bordercolor black -border $distance  \
+			-transparent white -background black -alpha background  \
+			-shadow ${opacity}x${border}+${distance}+${distance} \
+			-crop ${w3}x${h3}+${offset}+${offset} +repage \) \
 		-gravity center -compose over -composite $outfile
+
+: <<COMMENT
+# alternate better looking shadow, but slower (due to extra blur)
+	opacity=`convert xc: -format "%[fx:min($opacity+5,100)/100]" info:`
+	blur=`convert xc: -format "%[fx:$distance/2]" info:`
+	# readjust distance to shorten due to extra blur
+	distance=`convert xc: -format "%[fx:round(0.85*$distance)]" info:`
+	www=$((w3+distance))
+	hhh=$((h3+distance))
+	# read framed image
+	# make new white image and set virtual-pixel to black
+	# convert white to transparent and (important) convert to transparent black
+	# add shadow by using -motion-blur, but need to post blur, because motion-blur leave a slight white diagonal in the corner
+	# enable alpha channel and multiply by opacity (converted to fraction)
+	# crop to input size
+	# center composite over input
+	convert $tmp3A \
+		\( -size ${www}x${hhh} xc:white -virtual-pixel black \
+			-transparent white -background black -alpha background \
+			-channel rgba -motion-blur 0x${distance}+225 -blur 0x$blur  \
+			-alpha on -channel A -evaluate multiply $opacity +channel \
+			-crop ${w3}x${h3}+0+0 +repage  \) \
+		-gravity center -compose over -composite $outfile		
+COMMENT
+
+
 else
 	convert $tmp3A $outfile
 fi

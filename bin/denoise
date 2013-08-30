@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/22/2010 .......... revised 4/26/2010
+# Developed by Fred Weinhaus 4/22/2010 .......... revised 6/4/2013
 # 
 # USAGE: denoise [-m method] [-f filter] [-s subsection] [-n nstd] [-u unsharp] infile outfile
 # USAGE: denoise [-h or -help]
@@ -14,8 +14,7 @@
 #                           and get noise standard deviation from nstd argument
 # -n      nstd              noise standard deviation estimate expressed as 
 #                           percentage of std value in range 0 to 1; 
-#                           0<=float<=100; default is none specified and to get
-#                           value from subsection
+#                           0<=float<=100; default is estimated automatically
 # -u      unsharp           unsharp masking amount to apply after filtering;
 #                           float>=0; default is no unsharp masking
 # 
@@ -46,14 +45,20 @@
 # expressed as WIDTHxHEIGHT+XOFF+YOFF. The default is no subsection provided.
 # 
 # -n nstd ... NSTD is an estimate of the noise standard deviation in the image
-# expressed as a percentage (of std values in the range of 0 to 1). Thus values 
-# for nstd are 0<=float<=100. The default is no nstd provided. Either one or the 
-# other of nstd or subsection must be provided.
+# expressed as a percentage (100 times std values in the range of 0 to 1). Thus 
+# values for nstd are 0<=float<=100. The default is estimated automatically.
 # 
 # -u unsharp ... UNSHARP masking amount to apply as a post processing step to 
 # sharpen the image. Values are floats>=0. The default=0 for no unsharp masking.
-#
-# NOTE: This script will be a bit slow due to the use of -fx.
+# 
+# References:
+# Lee, J.S., 1981. Speckle Analysis and Smoothing of Synthetic Aperture Radar Images. Computer Graphics and Image Processing, Vol. 17:24-32.
+# http://www.isprs.org/proceedings/XXXVI/1-W41/makaleler/Rajabi_Specle_Noise.pdf
+# J. Immerkaer, "Fast Noise Variance Estimation", Comput. Vis. Image Understand., vol. 64, pp. 300-302, Sep. 1996
+# http://www.iaeng.org/IJCS/issues_v37/issue_1/IJCS_37_1_09.pdf
+# 
+# NOTE: This script may be a bit slow due to the use of -fx for version of IM 
+# prior to 6.8.0.5.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -218,8 +223,10 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpI1" ||
 
 # estimate noise std from nearly constant region
 if [ "$nstd" = "" -a "$subsection" = "" ]; then
-	errMsg "--- EITHER NSTD OR SUBSECTION MUST BE PROVIDED ---"
-elif [ "$subsection" != "" ]; then	
+	nstd=`convert $tmpI1 -define convolve:scale='!' -bias 50% \
+		-morphology Convolve Laplacian:3 -solarize 50% -level 0x50% -negate \
+		-format "%[fx:2*(mean/standard_deviation)*sqrt(pi/2)]" info:`
+elif [ "$nstd" = "" -a "$subsection" != "" ]; then	
 	nstd=`convert $tmpI1[$subsection] -format "%[fx:100*standard_deviation]" info:`
 fi
 
@@ -227,11 +234,24 @@ echo ""
 echo "nstd=$nstd"
 echo ""
 
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+
+#correct for change in median at IM 6.6.8-6 from radius to widthxheight
+#and from -median to -statistic median
+if [ "$im_version" -ge "06060806" -a "$method" = "median" ]; then
+	filter=`convert xc: -format "%[fx:2*$filter+1]" info:`
+	proc="-statistic median"
+else
+	proc="-median"
+fi
+
 #create mean (or median) and std
 if [ "$method" = "mean" ]; then
 	convert $tmpI1 -blur 0x$filter $tmpM1
 elif [ "$method" = "median" ]; then
-	convert $tmpI1 -median 2 $tmpM1
+	convert $tmpI1 $proc $filter $tmpM1
 fi
 convert $tmpI1 \( -clone 0 -blur 0x$filter \) \
 	\( -clone 0 -clone 0 -compose multiply -composite -blur 0x$filter \) \
@@ -257,11 +277,17 @@ convert $tmpI1 $tmpM1 $tmpG1 \
 	-fx "(u[0]-u[1])*u[2]+u[1]" $unsharpen $outfile
 '
 
+if [ "$im_version" -lt "06080005" ]; then
+	proc2="-monitor -fx 'u[0]-u[1]+u[2]' +monitor $unsharpen "
+else
+	proc2="-poly '1,1 -1,1 1,1' $unsharpen "
+fi
+
 # faster
-convert $tmpI1 $tmpM1 $tmpG1 \
+eval 'convert $tmpI1 $tmpM1 $tmpG1 \
 	\( -clone 0 -clone 2 -compose multiply -composite \) \
 	\( -clone 1 -clone 2 -compose multiply -composite \) \
-	-delete 0,2 -swap 0,1 -swap 1,2 -monitor \
-	-fx "u[0]-u[1]+u[2]" +monitor $unsharpen $outfile
+	-delete 0,2 -swap 0,1 -swap 1,2 \
+	'"$proc2"' $outfile'
 
 exit 0

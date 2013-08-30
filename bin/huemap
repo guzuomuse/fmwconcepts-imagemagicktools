@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/2/2010 .......... 5/2/2010
+# Developed by Fred Weinhaus 5/2/2010 .......... 7/6/2012
 #
 # USAGE: huemap [-h hues] [-t tolers] [-r] infile outfile
 # USAGE: huemap [-help]
@@ -159,14 +159,15 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
 srchue=`echo $hues | cut -d, -f 1`
 dsthue=`echo $hues | cut -d, -f 2`
 stoler=`echo $tolers | cut -d, -f 1`
 dtoler=`echo $tolers | cut -d, -f 2`
 #echo "srchue=$srchue; dsthue=$dsthue; stoler=$stoler; dtoler=$dtoler"
-
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
 
 # set up temp files
 tmpI1="$dir/huemap_I_$$.mpc"
@@ -187,7 +188,7 @@ trap "rm -f $tmpI1 $tmpI2 $tmpH1 $tmpH2 $tmpS1 $tmpS2 $tmpL1 $tmpL2 $tmpG1 $tmpG
 trap "rm -f $tmpI1 $tmpI2 $tmpH1 $tmpH2 $tmpS1 $tmpS2 $tmpL1 $tmpL2 $tmpG1 $tmpG2 $tmpT1 $tmpT2 $tmpA1 $tmpA2; exit 1" 1 2 3 15
 
 # read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" -alpha off +repage "$tmpI1" ||
+convert -quiet -regard-warnings "$infile" +repage "$tmpI1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 # separate alpha channel if exists
@@ -274,9 +275,22 @@ fi
 # apply modified gradient as lut to hue channel
 convert $tmpH1 $tmpG1 -interpolate nearest-neighbor -clut $tmpH1
 
+# colorspace swapped at IM 6.7.5.5, but not properly fixed until 6.7.6.6
+# before swap verbose info reported colorspace=RGB after colorspace=sRGB
+if [ "$im_version" -ge "06070606" ]; then
+	cspace="sRGB"
+else
+	cspace="RGB"
+fi
+
+
 # recombine channels and convert to RGB
-convert $tmpH1 $tmpS1 $tmpL1 -set colorspace HSL -combine \
-	-colorspace RGB $tmpI1
+convert $tmpH1 -colorspace HSL \
+	$tmpH1 -compose CopyRed   -composite \
+	$tmpS1 -compose CopyGreen -composite \
+	$tmpL1 -compose CopyBlue  -composite \
+	-colorspace $cspace $tmpI1
+
 
 # add alpha channel back if needed	
 if [ "$is_alpha" = "True" ]; then

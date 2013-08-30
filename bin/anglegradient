@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/30/2008 .......... revised 2/4/2010
+# Developed by Fred Weinhaus 5/30/2008 .......... revised 7/30/2012
 #
 # USAGE: anglegradient widthxheight [-a angle] [-c color ] outfile
 # USAGE: anglegradient [-h or -help]
@@ -171,7 +171,7 @@ fi
 
 # get IM version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # test if IM version compatible with -distort SRT
 # (earliest is IM 6.3.5-1 but possibly not stable until IM v6.4.2-6)
@@ -182,6 +182,11 @@ maxdim=`convert xc: -format "%[fx:max($ww,$hh)]" info:`
 
 # test if square
 testsq=`convert xc: -format "%[fx:($ww==$hh)?1:0]" info:`
+if [ $testsq -eq 1 ]; then
+	operation1=""
+else
+	operation1="-gravity center -crop ${ww}x${hh}+0+0 +repage"
+fi
 
 # separate colors
 numcolors=`echo "$colors" | tr "-" " " | wc -w` 
@@ -189,57 +194,49 @@ numcolors=`echo "$colors" | tr "-" " " | wc -w`
 color1=`echo "$colors" | cut -d- -f1`
 color2=`echo "$colors" | cut -d- -f2`
 
-# test if -alpha copy exists in current IM version (IM v6.4.3-7)
-if [ "$im_version" -ge "06040307" ]; then
-	operation1="-alpha copy"
-else
-	operation1="-clone 0 -compose copy_opacity -composite" 
-fi
 
 # set up colorpair and operations
-# note as of IM 6.5.2-8, +level-colors did not handle transparency correctly
-# when add alpha channel via -alpha copy -channel rgba, the alpha 
-# channel needed to be negated. Anthony wants to fix/change that, 
-# thus no point in using -alpha copy -channel A -negate -channel RGBA
-# before +level-colors for transparency situation
 if [ "$color1" != "none" -a "$color2" != "none" ]; then
-	colorpair="white-black"
-	operation1="+level-colors ${color2},${color1}"
-	operation2=""
+	colorpair="gray(255)-gray(0)"
+	operation2="+level-colors ${color2},${color1}"
+	operation3="-delete 0"
 elif [ "$color1" != "none" -a "$color2" = "none" ]; then
-	colorpair="white-black"
+	colorpair="gray(255)-gray(0)"
 	operation2="-fill $color1 -colorize 100%"
+	operation3="+swap -alpha off -compose copy_opacity -composite"
 elif [ "$color1" = "none" -a "$color2" != "none" ]; then
-	colorpair="black-white"
+	colorpair="gray(0)-gray(255)"
 	operation2="-fill $color2 -colorize 100%"
+	operation3="+swap -alpha off -compose copy_opacity -composite"
 fi
 
 # setup diagonal directions if needed
 if [ "$angle" = "ne" ]; then
 	angle=`convert xc: -format "%[fx:(180/pi)*atan2($hh,$ww)]" info:`
-elif [ "$gradangle" = "nw" ]; then
+elif [ "$angle" = "nw" ]; then
 	angle=`convert xc: -format "%[fx:360+(180/pi)*atan2(-$hh,$ww)]" info:`
 elif [ "$angle" = "sw" ]; then
 	angle=`convert xc: -format "%[fx:360+(180/pi)*atan2(-$hh,-$ww)]" info:`
 elif [ "$gradangle" = "se" ]; then
 	angle=`convert xc: -format "%[fx:(180/pi)*atan2($hh,-$ww)]" info:`
 fi
+#echo "colors=$colors; colorpair=$colorpair; op1=$operation1; op2=$operation2; angle=$angle"
+
 
 # process gradient
 if [ "$angle" = "0" ]; then
 	convert -size $size gradient:"$colors" $outfile
-elif [ $testsq -eq 1 ]; then
+elif [ "$color1" != "none" -a "$color2" != "none" ]; then
 	convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
-		-distort SRT "$angle" \
-		-contrast-stretch 0 \) \
-		$operation1 $operation2 \
+		-distort SRT "$angle" $operation1 -contrast-stretch 0 \) \
+		\( -clone 0 $operation2 \) \
+		$operation3 \
 		$outfile
 else
 	convert \( -size ${maxdim}x${maxdim} gradient:"$colorpair" \
-		-distort SRT "$angle" \
-		-gravity center -crop ${ww}x${hh}+0+0 +repage \
-		-contrast-stretch 0 \) \
-		$operation1 $operation2 \
+		-distort SRT "$angle" $operation1 -contrast-stretch 0 \) \
+		\( -clone 0 $operation2 \) \
+		$operation3 \
 		$outfile
 fi
 exit 0

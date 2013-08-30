@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 9/21/2008 .......... revised 4/16/2009
+# Developed by Fred Weinhaus 9/21/2008 .......... revised 7/27/2012
 #
 # USAGE: 3Dbox option=value infile1 infile2 infile3 [infile4 infile5 infile6] outfile
 # USAGE: 3Dbox [-h or -help]
@@ -115,33 +115,6 @@
 # The actual size of the image depends upon the box's rotation, zoom, 
 # pef and the format parameter.
 #
-# SIZE is the dwidth[xdheight] for the output image. The choices are:
-# dwidth, dwidthx, xdheight or dwidthxdheight. For format=auto, size will
-# override zoom and determine the zoom factor to use to ensure the output
-# is the desired size according to the following. If dwidth is provided,
-# then it will be used to compute the zoom from the larger of the unzoomed
-# output width and height. If dwidthx is provided, then it will be used to
-# compute the zoom from the unzoomed output width. If xdheight is
-# provided, it will be used to compute the zoom from the unzoomed output
-# height. If dwidthxdheight is provided, dwidth will be used to compute
-# the zoom from the unzoomed output width. The choice is basically
-# determining which dimension will end up the desired size. For
-# format=center, zoom and dwidth[xdheight] act independently. The default
-# size is an approximaton and will be large enough to hold the box at any
-# rotation, zoom and pef and may contain excess background. The size
-# parameter, however, allows one to set a desired size. If either dwidth
-# or dheight is missing, then the supplied value will be used for both the
-# width and height of the output. The best way to determine the needed
-# size is probably to generate an image with pan and tilt set to some
-# multiple of 90 degrees and set the roll to 45 degrees so that output is
-# looking right at the largest face turned so that the diagonals are
-# horizontal and vertical. Then compare the size of this image to another
-# generated with pan=45 degrees, tilt=-45 degrees and roll=0 so that one
-# is viewing the box with its diagonals horizontal and vertical. Use the
-# largest dimensions from each case. Basically, you can set dwidthxdheight
-# such that the image will be larger than necessary as one can always crop
-# the animation afterwards to remove excess background area.
-# 
 # SIZE is the dwidth[xdheight] for the output image. The choices are:
 # dwidth, dwidthx, xdheight or dwidthxdheight. For format=auto, size will
 # override zoom and determine the zoom factor to use to ensure the output
@@ -478,7 +451,7 @@ else
 					   testFloat "$zoom"; zoomtest=$floatresult
 					   zoomtestA=`echo "$pef <= 0" | bc`
 					   [ $zoomtest -eq 0 ] && errMsg "ZOOM=$zoom IS NOT A NUMBER"
-					   [ $peftestA -eq 1 ] && errMsg "ZOOM=$zoom MUST BE GREATER THAN 0"
+					   [ $zoomtestA -eq 1 ] && errMsg "ZOOM=$zoom MUST BE GREATER THAN 0"
 					   ;;
 		  size[=]*)    # output size
 					   arg="$1="
@@ -598,7 +571,7 @@ fi
 # test for minimum IM version required
 # IM 6.3.5.6 or higher to conform to current -distort perspective control point sequence
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -lt "06030506" ]
 	then
 	errMsg "--- REQUIRES IM VERSION 6.3.5-6 OR HIGHER ---"
@@ -991,7 +964,7 @@ isFrontFacing "$u0,$v0" "$u1,$v1" "$u2,$v2"
 if [ $ff -eq 1 ]; then
 	s1="0,0 $u0,$v0  $lastwidth1,0 $u1,$v1  $lastwidth1,$lastheight1 $u2,$v2  0,$lastheight1 $u3,$v3"
 #	echo "s1=$s1"
-	proc1='$dir/tmp1.mpc -matte $filter +distort Perspective "$s1"'
+	proc1='$dir/tmp1.mpc -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s1"'
 else
 	proc1=""
 fi
@@ -1003,7 +976,7 @@ isFrontFacing "$u5,$v5" "$u0,$v0" "$u3,$v3"
 if [ $ff -eq 1 ]; then
 	s2="0,0 $u5,$v5  $lastwidth2,0 $u0,$v0  $lastwidth2,$lastheight2 $u3,$v3  0,$lastheight2 $u6,$v6"
 #	echo "s2=$s2"
-	proc2='$dir/tmp2.mpc -matte $filter +distort Perspective "$s2"'
+	proc2='$dir/tmp2.mpc -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s2"'
 else
 	proc2=""
 fi
@@ -1015,7 +988,7 @@ isFrontFacing "$u5,$v5" "$u4,$v4" "$u1,$v1"
 if [ $ff -eq 1 ]; then
 	s3="0,0 $u5,$v5  $lastwidth3,0 $u4,$v4  $lastwidth3,$lastheight3 $u1,$v1  0,$lastheight3 $u0,$v0"
 #	echo "s3=$s3"
-	proc3='$dir/tmp3.mpc -matte $filter +distort Perspective "$s3"'
+	proc3='$dir/tmp3.mpc -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s3"'
 else
 	proc3=""
 fi
@@ -1028,9 +1001,9 @@ if [ $ff -eq 1 ]; then
 	s4="0,0 $u4,$v4  $lastwidth4,0 $u5,$v5  $lastwidth4,$lastheight4 $u6,$v6  0,$lastheight4 $u7,$v7"
 #	echo "s4=$s4"
 	if [ $numimg -eq 4 ]; then
-		proc4='$dir/tmp1.mpc $rotate -matte $filter +distort Perspective "$s4"'
+		proc4='$dir/tmp1.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s4"'
 	elif [ $numimg -eq 7 ]; then
-		proc4='$dir/tmp4.mpc $rotate -matte $filter +distort Perspective "$s4"'
+		proc4='$dir/tmp4.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s4"'
 	fi
 else
 	proc4=""
@@ -1044,9 +1017,9 @@ if [ $ff -eq 1 ]; then
 	s5="0,0 $u1,$v1  $lastwidth5,0 $u4,$v4  $lastwidth5,$lastheight5 $u7,$v7  0,$lastheight5 $u2,$v2"
 #	echo "s5=$s5"
 	if [ $numimg -eq 4 ]; then
-		proc5='$dir/tmp2.mpc $rotate -matte $filter +distort Perspective "$s5"'
+		proc5='$dir/tmp2.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s5"'
 	elif [ $numimg -eq 7 ]; then
-		proc5='$dir/tmp5.mpc $rotate -matte $filter +distort Perspective "$s5"'
+		proc5='$dir/tmp5.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s5"'
 	fi
 else
 	proc5=""
@@ -1060,9 +1033,9 @@ if [ $ff -eq 1 ]; then
 	s6="0,0 $u7,$v7  $lastwidth6,0 $u6,$v6  $lastwidth6,$lastheight6 $u3,$v3  0,$lastheight6 $u2,$v2"
 #	echo "s6=$s6"
 	if [ $numimg -eq 4 ]; then
-		proc6='$dir/tmp3.mpc $rotate -matte $filter +distort Perspective "$s6"'
+		proc6='$dir/tmp3.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s6"'
 	elif [ $numimg -eq 7 ]; then
-		proc6='$dir/tmp6.mpc $rotate -matte $filter +distort Perspective "$s6"'
+		proc6='$dir/tmp6.mpc $rotate -matte $filter -virtual-pixel transparent -mattecolor none +distort Perspective "$s6"'
 	fi
 else
 	proc6=""
@@ -1105,10 +1078,10 @@ fi
 #echo "merge=$merge"
 
 # draw box
-eval 'convert -virtual-pixel transparent -mattecolor none \
-	\( '"$proc1"' \) \
-	\( '"$proc2"' \) \
-	\( '"$proc3"' \) \
+eval 'convert \
+	\( '"$proc1"' -write 1tmp1.png \) \
+	\( '"$proc2"' -write 1tmp2.png \) \
+	\( '"$proc3"' -write 1tmp3.png \) \
 	\( '"$proc4"' \) \
 	\( '"$proc5"' \) \
 	\( '"$proc6"' \) \

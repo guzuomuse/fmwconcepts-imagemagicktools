@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/16/2008 .......... revised 10/16/2008
+# Developed by Fred Weinhaus 10/16/2008 .......... revised 6/3/2013
 #
 # USAGE: clip [-c colormode] [-l cliplow] [-h cliphigh] infile outfile
 # USAGE: clip [-help]
@@ -214,18 +214,45 @@ tmpL2="$dir/clip_L_$$.cache"
 trap "rm -f $tmpA1 $tmpA2 $tmpI1 $tmpI2 $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB2 $tmpH1 $tmpH2 $tmpS1 $tmpS2 $tmpL1 $tmpL2; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmpI1 $tmpI2 $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB2 $tmpH1 $tmpH2 $tmpS1 $tmpS2 $tmpL1 $tmpL2; exit 1" 1 2 3 15
 
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# Note: -contrast-stretch works on linear grayscale image so needs -set colorspace RGB to reproduce old results.
+# The following was determined from various version tests using clip.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+# Note IM 6.7.8.7 has bug in combining non-RGB colorspaces
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
 
 # test if infile exists and is valid
-if convert -quiet -regard-warnings "$infile" +repage "$tmpA1"
+if convert -quiet -regard-warnings "$infile" +repage $setcspace "$tmpA1"
 	then
 	: ' do nothing '
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
-
-# get im version
-im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
 # function to get channel min and max values in range 0 to 100
 getChannelStats()
@@ -239,8 +266,8 @@ getChannelStats()
 		max=`convert xc: -format "%[fx:100*$max/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-		min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-		max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
+		max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		min=`convert xc: -format "%[fx:100*$min)]" info:`
 		max=`convert xc: -format "%[fx:100*$max)]" info:`
 	fi
@@ -254,12 +281,12 @@ getValuePercent()
 	# test if str ends in %
 	# test returns number of characters including % or zero if no %	
 	numchars=`expr "$str" : '^.*%$'`
-	echo "numchars=$numchars"
+	#echo "numchars=$numchars"
 	if [ $numchars -ne 0 ]; then
 		#case percent
 		is_pct="yes"
 		numdigits=`expr $numchars - 1`
-		echo "numdigits=$numdigits"
+		#echo "numdigits=$numdigits"
 		clipnum=${str:0:$numdigits}
 	else
 		#case no percent
@@ -280,7 +307,6 @@ getValuePercent()
 			clipnum="$str"
 		fi
 	fi
-echo "percent=$percent; num=$num"
 	}
 
 
@@ -297,14 +323,14 @@ else
 	is_highpct=$is_lowpct
 fi
 
-echo "cliplownum=$cliplownum; lowpct=$is_lowpct;"
-echo "cliphighnum=$cliphighnum; highpct=$is_highpct;"
+#echo "cliplownum=$cliplownum; lowpct=$is_lowpct;"
+#echo "cliphighnum=$cliphighnum; highpct=$is_highpct;"
 
 # if either clip value is percent, use percent for both
 use_pct="no"
 [ "$is_lowpct" = "yes" -o "$is_highpct" = "yes" ] && use_pct="yes"
 
-echo "use_pct=$use_pct"
+#echo "use_pct=$use_pct"
 
 # ensure clip values equivalent to zero are one digit 
 # for determining whether to use -level or -contrast-stretch
@@ -319,13 +345,13 @@ else
 	cliphigh=$cliphighnum
 fi
 
-echo "cliplow=$cliplow; cliphigh=$cliphigh"
+#echo "cliplow=$cliplow; cliphigh=$cliphigh"
 
 # determine whether to use -level or -contrast-stretch
 use_level="no"
 [ "$cliplow" = 0 -a "$cliphigh" = 0 ] && use_level="yes"
 
-echo "use_level=$use_level"
+#echo "use_level=$use_level"
 
 # convert cliphighnum to complement for IM -contrast-stretch if before version 6.4.4-9
 if [ "$im_version" -lt "06040409" ]; then 
@@ -343,65 +369,79 @@ if [ "$use_pct" = "yes" ]; then
 	cliphighnum=${cliphighnum}%
 fi
 
-echo "cliplownum=$cliplownum; cliphighnum=$cliphighnum"
+#echo "cliplownum=$cliplownum; cliphighnum=$cliphighnum"
+#echo "colormode=$colormode"
 
-echo "colormode=$colormode"
+# get colorspace and type
+# colorspace swapped at IM 6.7.5.5, but not properly fixed until 6.7.6.6
+# before swap verbose info reported colorspace=RGB after colorspace=sRGB
+# not all formats report grayscale for colorspace (gif, tiff, jpg do not), but type will be grayscale
+colorspace=`identify -ping -verbose $tmpA1 | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
+type=`identify -ping -verbose $tmpA1 | sed -n 's/^.*Type: \([^ ]*\).*$/\1/p'`
+if [ "$colorspace" != "RGB" -a "$colorspace" != "sRGB" -a "$colorspace" != "Gray" ]; then
+	errMsg "--- FILE $infile MUST BE RGB, sRGB or GRAY ---"
+fi
+if [ "$colormode" = "sb" -a "$type" = "Grayscale" ]; then
+	errMsg "--- HSB CONVERSION IS NOT ALLOWED WITH GRAYSCALE IMAGERY ---"
+fi
+if [ "$colormode" = "lb" -a "$type" = "Grayscale" ]; then
+	errMsg "--- HSL CONVERSION IS NOT ALLOWED WITH GRAYSCALE IMAGERY ---"
+fi
+
 
 # convert to desired colorspace/channels
 if [ "$colormode" = "i" ]; then
-	convert $tmpA1 -colorspace gray $tmpI1
+	convert $tmpA1 $setcspace -colorspace gray $tmpI1
 elif [ "$colormode" = "rgb" ]; then
-	convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
-	convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
-	convert $tmpA1 -colorspace RGB -channel B -separate $tmpB1
+	convert $tmpA1 $setcspace -channel R -separate $tmpR1
+	convert $tmpA1 $setcspace -channel G -separate $tmpG1
+	convert $tmpA1 $setcspace -channel B -separate $tmpB1
 elif [ "$colormode" = "sb" ]; then
-	convert $tmpA1 -colorspace HSB -channel R -separate $tmpH1
-	convert $tmpA1 -colorspace HSB -channel G -separate $tmpS1
-	convert $tmpA1 -colorspace HSB -channel B -separate $tmpL1
+	convert $tmpA1 $setcspace -colorspace HSB -channel R -separate $tmpH1
+	convert $tmpA1 $setcspace -colorspace HSB -channel G -separate $tmpS1
+	convert $tmpA1 $setcspace -colorspace HSB -channel B -separate $tmpL1
 elif [ "$colormode" = "sl" ]; then
-	convert $tmpA1 -colorspace HSL -channel R -separate $tmpH1
-	convert $tmpA1 -colorspace HSL -channel G -separate $tmpS1
-	convert $tmpA1 -colorspace HSL -channel B -separate $tmpL1
+	convert $tmpA1 $setcspace -colorspace HSL -channel R -separate -write 1tmp1.jpg $tmpH1
+	convert $tmpA1 $setcspace -colorspace HSL -channel G -separate -write 1tmp2.jpg $tmpS1
+	convert $tmpA1 $setcspace -colorspace HSL -channel B -separate -write 1tmp3.jpg $tmpL1
 fi
 
 
 # process image
 if [ "$colormode" = "i" -a "$use_level" = "yes" ]; then
 	getChannelStats "$tmpI1"
-	echo "I: min=$min; max=$max;"
+	#echo "I: min=$min; max=$max;"
 	convert $tmpA1 -level ${min}%,${max}% $outfile
 elif [ "$colormode" = "i" ]; then
-echo "gray cs"
-	convert $tmpA1 -contrast-stretch ${cliplownum},${cliphighnum} $outfile
+	convert $tmpA1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} $outfile
 elif [ "$colormode" = "rgb" -a "$use_level" = "yes" ]; then
 	getChannelStats "$tmpR1"
-	echo "R: min=$min; max=$max;"
+	#echo "R: min=$min; max=$max;"
 	convert $tmpR1 -level ${min}%,${max}% $tmpR1
 	getChannelStats "$tmpG1"
-	echo "G: min=$min; max=$max;"
+	#echo "G: min=$min; max=$max;"
 	convert $tmpG1 -level ${min}%,${max}% $tmpG1
 	getChannelStats "$tmpB1"
-	echo "R: min=$min; max=$max;"
+	#echo "R: min=$min; max=$max;"
 	convert $tmpB1 -level ${min}%,${max}% $tmpB1
-	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
+	convert $tmpR1 $tmpG1 $tmpB1 -colorspace $cspace -combine $outfile
 elif [ "$colormode" = "rgb" ]; then
-	convert $tmpR1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpR1
-	convert $tmpG1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpG1
-	convert $tmpB1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpB1
-	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
+	convert $tmpR1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} $tmpR1
+	convert $tmpG1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} $tmpG1
+	convert $tmpB1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} $tmpB1
+	convert $tmpR1 $tmpG1 $tmpB1 -colorspace $cspace -combine $outfile
 elif [ "$colormode" = "sb" -a "$use_level" = "yes" ]; then
-echo "sb level"
 	getChannelStats "$tmpS1"
-	echo "S: min=$min; max=$max;"
+	#echo "S: min=$min; max=$max;"
 	convert $tmpS1 -level ${min}%,${max}% $tmpS1
 	getChannelStats "$tmpL1"
-	echo "L: min=$min; max=$max;"
+	#echo "L: min=$min; max=$max;"
 	convert $tmpL1 -level ${min}%,${max}% $tmpL1
 	convert $tmpH1 -colorspace HSB \
 		$tmpH1 -compose CopyRed   -composite \
 		$tmpS1 -compose CopyGreen -composite \
 		$tmpL1 -compose CopyBlue  -composite \
-		-colorspace RGB $outfile
+		-colorspace $cspace $outfile
 elif [ "$colormode" = "sb" ]; then
 	convert $tmpS1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpS1
 	convert $tmpL1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpL1
@@ -409,27 +449,27 @@ elif [ "$colormode" = "sb" ]; then
 		$tmpH1 -compose CopyRed   -composite \
 		$tmpS1 -compose CopyGreen -composite \
 		$tmpL1 -compose CopyBlue  -composite \
-		-colorspace RGB $outfile
+		-colorspace $cspace $outfile
 elif [ "$colormode" = "sl" -a "$use_level" = "yes" ]; then
 	getChannelStats "$tmpS1"
-	echo "S: min=$min; max=$max;"
+	#echo "S: min=$min; max=$max;"
 	convert $tmpS1 -level ${min}%,${max}% $tmpS1
 	getChannelStats "$tmpL1"
-	echo "L: min=$min; max=$max;"
+	#echo "L: min=$min; max=$max;"
 	convert $tmpL1 -level ${min}%,${max}% $tmpL1
 	convert $tmpH1 -colorspace HSL \
 		$tmpH1 -compose CopyRed   -composite \
 		$tmpS1 -compose CopyGreen -composite \
 		$tmpL1 -compose CopyBlue  -composite \
-		-colorspace RGB $outfile
+		-colorspace $cspace $outfile
 elif [ "$colormode" = "sl" ]; then
-	convert $tmpS1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpS1
-	convert $tmpL1 -contrast-stretch ${cliplownum},${cliphighnum} $tmpL1
+	convert $tmpS1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} -write 1tmp4.jpg $tmpS1
+	convert $tmpL1 $setcspace -contrast-stretch ${cliplownum},${cliphighnum} -write 1tmp5.jpg $tmpL1
 	convert $tmpH1 -colorspace HSL \
 		$tmpH1 -compose CopyRed   -composite \
 		$tmpS1 -compose CopyGreen -composite \
 		$tmpL1 -compose CopyBlue  -composite \
-		-colorspace RGB $outfile
+		-colorspace $cspace $outfile
 fi
 exit 0
 

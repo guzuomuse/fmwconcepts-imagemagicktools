@@ -1,0 +1,206 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/17/2011 .......... revised 7/5/2013
+# 
+# USAGE: entropy infile
+# USAGE: entropy [-h or -help]
+# 
+# OPTIONS:
+# 
+# -h or -help     Displays help information
+# 
+###
+# 
+# NAME: ENTROPY 
+# 
+# PURPOSE: To compute the normalized entropy of an image channel-by-channel.
+# 
+# DESCRIPTION: ENTROPY computes the normalized entropy of an image 
+# channel-by-channel. Entropy is a measure of graylevel distribution 
+# (disorder or randomness) in the histogram. It is not a measure of spatial 
+# disorder or spatial randomness in the image. The entropy is computed from 
+# the histogram of the channel by accumulating -p*ln(p) over every 8-bit 
+# graylevel, where p = (count for a given graylevel) / (total pixels). 
+# The normalized entropy is equal to the entropy/ln(256). For example, if the 
+# image is a single grayscale, then the entropy=0. If the image is a uniform 
+# gradient including all values from 0 to 255 that are equally populated in 
+# the histogram, then the entropy=1.
+#
+# When the colorspace is Gray, only one Gray entropy value will be printed. 
+#
+# When the colorspace is CMYK, the following 5 values will be printed: 
+# Cyan, Magenta, Yellow and Black Entropies and the Average of those four 
+# entropies.
+# 
+# When the colorspace is RGB or any other colorspace, then the following 4 
+# values will be printed to the terminal:  Red, Green and Blue Entropies and 
+# the Average of those three entropies. For any colorspace other than RGB, 
+# then Red, Green and Blue should then be interpreted as channels 1, 2 and 3, 
+# respectively, for that colorspace.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 1 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile
+	infile=$1
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "--- NO INPUT FILE SPECIFIED ---"
+
+
+# setup temporary images and auto delete upon exit
+tmpA1="$dir/entropy_1_$$.mpc"
+tmpB1="$dir/entropy_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image and filter image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get total number of pixels
+totpix=`convert $tmpA1 -ping -format "%[fx:w*h]" info:`
+#echo "totpix=$totpix"
+
+# get colorspace
+cspace=`convert $tmpA1 -format "%[colorspace]" info:`
+#echo "cspace=$cspace"
+
+echo ""
+if [ "$cspace" = "Gray" -o "$cspace" = "Rec709Luma" -o "$cspace" = "Rec601Luma" ]; then
+
+	# get gray entropy from red channel
+	# get histogram, remove all chars not numeric or space and collapse multiple spaces
+	# use NF>1 (i.e. number of fields > 1) in AWK to remove empty lines or lines with only one field 
+	gray_entropy=$(convert $tmpA1 -channel r -separate -depth 8 -format "%c" -define histogram:unique-colors=true histogram:info:- |\
+	tr -cs '0-9\012' ' ' |\
+	awk -v totpix="$totpix" ' 
+	NF>1 { p = $1/totpix; gray_entropy += -p*log(p); }
+	END { print gray_entropy/log(256); } ')
+	echo "Gray Entropy = $gray_entropy"
+
+
+elif [ "$cspace" = "CMYK" ]; then
+
+	entropyArr=(`convert $tmpA1 -depth 8 -format "%c" histogram:info:- |\
+	tr -cs '0-9\012' ' ' |\
+	awk -v totpix="$totpix" ' 
+	{ c[$2] += $1; m[$3] += $1; y[$4] += $1; k[$5] += $1; }
+	END { for (i=0;i<256;i++)  
+	{ c[i] = (c[i]+0)/totpix; m[i] = (m[i]+0)/totpix; y[i] = (y[i]+0)/totpix; k[i] = (k[i]+0)/totpix;
+	if ( c[i] == 0 ) ec[i] = 0; else ec[i] = -c[i]*log(c[i]); 
+	if ( m[i] == 0 ) em[i] = 0; else em[i] = -m[i]*log(m[i]); 
+	if ( y[i] == 0 ) ey[i] = 0; else ey[i] = -y[i]*log(y[i]);  
+	if ( k[i] == 0 ) ek[i] = 0; else ek[i] = -k[i]*log(k[i]);  
+	cyan_entropy += ec[i]; magenta_entropy += em[i]; yellow_entropy += ey[i]; black_entropy += ek[i]; } 
+	print cyan_entropy/log(256), magenta_entropylog(256), yellow_entropylog(256), black_entropylog(256), 
+	(cyan_entropy + magenta_entropy + yellow_entropy + black_entropy)/(4*log(256)); }
+	'` )
+	echo "Cyan Entropy = ${entropyArr[0]}"
+	echo "Magenta Entropy = ${entropyArr[1]}"
+	echo "Yellow Entropy = ${entropyArr[2]}"
+	echo "Black Entropy = ${entropyArr[3]}"
+	echo "Average CMYK Entropy = ${entropyArr[4]}"
+
+else
+
+	entropyArr=(`convert $tmpA1 -depth 8 -format "%c" histogram:info:- |\
+	tr -cs '0-9\012' ' ' |\
+	awk -v totpix="$totpix" ' 
+	{ r[$2] += $1; g[$3] += $1; b[$4] += $1; }
+	END { for (i=0;i<256;i++)  
+	{ r[i] = (r[i]+0)/totpix; g[i] = (g[i]+0)/totpix; b[i] = (b[i]+0)/totpix;
+	if ( r[i] == 0 ) er[i] = 0; else er[i] = -r[i]*log(r[i]); 
+	if ( g[i] == 0 ) eg[i] = 0; else eg[i] = -g[i]*log(g[i]); 
+	if ( b[i] == 0 ) eb[i] = 0; else eb[i] = -b[i]*log(b[i]);  
+	red_entropy += er[i]; green_entropy += eg[i]; blue_entropy += eb[i]; } 
+	print red_entropy/log(256), green_entropy/log(256), blue_entropy/log(256), (red_entropy + green_entropy + blue_entropy)/(3*log(256)); }
+	'` )
+	echo "Red Entropy = ${entropyArr[0]}"
+	echo "Green Entropy = ${entropyArr[1]}"
+	echo "Blue Entropy = ${entropyArr[2]}"
+	echo "Average RGB Entropy = ${entropyArr[3]}"
+
+fi
+echo ""
+exit 0
+

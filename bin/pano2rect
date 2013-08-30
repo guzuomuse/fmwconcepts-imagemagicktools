@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 8/10/2008 .......... revised 8/15/2008
+# Developed by Fred Weinhaus 8/10/2008 .......... revised 6/13/2013
 # 
 # USAGE: pano2rect [-v vtop,vbot] [-p pfov] [-f format] [-i iyc] [-o oyc] [-h height] [-vp vpmethod] [-b bgcolor] infile outfile
 # USAGE: pano2rect [-help]
@@ -337,7 +337,7 @@ fi
 # perspective: r=f*tan(phi); f=r/tan(phi); f=(N/2)/tan((fov/2)*(pi/180))=N/(2*tan(fov*pi/360))
 
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # see Bourke diagram at http://local.wasp.uwa.edu.au/~pbourke/projection/fish2/
 
@@ -351,6 +351,6 @@ fi
 # process image
 	convert \( -size ${width}x${height} xc: \) $tmpA \
 	-virtual-pixel $vpmethod -background $bgcolor -monitor \
-	-fx "yd=j-$oyc; v.p{i,(180*$shl/(pi*$vrange))*atan($pfocinv*yd)+$iyc}" \
+	-fx "yd=j-$oyc; v.p{i,(180*$shl/(pi*$vrange))*atan($pfocinv*yd)+$iyc}" +monitor \
 	$outfile
 exit 0

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/20/2008 .......... revised 1/21/2008
+# Developed by Fred Weinhaus 1/20/2008 .......... revised 6/6/2013
 #
 # USAGE: flickerchannel [-c channellist] [-d delay] [ -r resize] [-m colormodel] [-i] [-l] [-f] infile
 # USAGE: flickerchannel [-h or -help]
@@ -13,8 +13,8 @@
 # -d     delay            time delay per frame (ms); delay >= 0; default=50
 # -r     resize           image resize percentage; resize > 0; 
 #                         default=100 (unchanged)
-# -m     colormodel       desired color space to convert (RGB) image;
-#                         default is infile colorspace: RGB, CMYK or Gray
+# -m     colormodel       desired color space to convert (RGB/sRGB) image;
+#                         default is infile colorspace: RGB/sRGB or CMYK
 # -i                      includes the full color image in the animation
 # -l                      disables the labeling of the images
 # -f                      saves the animation to file animation.gif
@@ -30,11 +30,9 @@
 # channels of the supplied input image and optionally saves the animation 
 # to a file. At least two channels must be supplied. The main purpose of the 
 # script is to make a visual inspection of two (or more) channels of an image
-# by alternating the display of each channel. If the image is RGB, then it may 
-# optionally be converted to any other valid colorspace by the script before 
-# the channels are labeled and displayed. The image can be any colorspace to 
-# begin, but will be labeled as RGB, since IM does not keep track of the 
-# colorspace of saved files.
+# by alternating the display of each channel. The input image must be sRGB/RGB 
+# or CMYK. It may optionally be converted to any other valid colorspace by the 
+# script before the channels are labeled and displayed.
 # 
 # 
 # OPTIONS: 
@@ -55,9 +53,8 @@
 # the input image.
 # 
 # -m  COLORMODEL is the desired color model in which to present the animation. 
-# Any valid IM colorspace is permitted, but if used, the infile must be in RGB 
-# colorspace. If a colormodel other than RGB is specified, then the RGB image is
-# first transformed into that color space before separating the channels. 
+# Any valid IM colorspace is permitted, but if used, the infile must be in  
+# RGB/sRGB or CMYK colorspace. The default is the input colorspace.
 # 
 # -i ... Includes the full color infile in the animation.
 # 
@@ -129,7 +126,7 @@ animateChannel()
 		label="-label $infile--${modelspace}$idn"
 	fi
 	convert $label "$1" $resize miff:- |\
-		montage - -geometry +0+0 -tile 1x1 $tmpC
+		montage - -geometry +0+0 -tile 1x1 -colorspace $cspace $tmpC
 	shift
 	while [ $# -gt 0 ]
 		do
@@ -142,7 +139,7 @@ animateChannel()
 		fi
 		convert $label "$1" $resize miff:- |\
 	  		montage - -geometry +0+0 -tile 1x1 miff:- |\
-			convert -delay $delay $tmpC -page +0+0 - -page +0+0 $tmpC
+			convert -delay $delay $tmpC -page +0+0 - -page +0+0 -colorspace $cspace $tmpC
 		shift
 	done
 	}
@@ -245,41 +242,90 @@ tmp3="$dir/flickerchannel_3_$$.png"
 trap "rm -f $tmpA $tmpB $tmpC $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmpC $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using autolevel.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+#if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070800" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
 
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
 	# get colorspace
 	data=`identify -verbose $tmpA`
 	colorspace=`echo "$data" | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
+echo "colorspace=$colorspace; colormodel=$colormodel"
 	if [ "$colormodel" = "CMYK" ]
 		then
 			modelspace="CMYK"
-			convert $tmpA -colorspace CMYK -channel C -separate $tmp0
-			convert $tmpA -colorspace CMYK -channel M -separate $tmp1
-			convert $tmpA -colorspace CMYK -channel Y -separate $tmp2
-			convert $tmpA -colorspace CMYK -channel K -separate $tmp3
+			convert $tmpA $setcspace -colorspace CMYK -channel C -separate $tmp0
+			convert $tmpA $setcspace -colorspace CMYK -channel M -separate $tmp1
+			convert $tmpA $setcspace -colorspace CMYK -channel Y -separate $tmp2
+			convert $tmpA $setcspace -colorspace CMYK -channel K -separate $tmp3
 			tmplist="$tmp0 $tmp1 $tmp2 $tmp3"
 	elif [ "$colorspace" = "CMYK" -a "$colormodel" = "" ]
 		then
 			modelspace="CMYK"
-			convert $tmpA -channel C -separate $tmp0
-			convert $tmpA -channel M -separate $tmp1
-			convert $tmpA -channel Y -separate $tmp2
-			convert $tmpA -channel K -separate $tmp3
+			convert $tmpA $setcspace -channel C -separate $tmp0
+			convert $tmpA $setcspace -channel M -separate $tmp1
+			convert $tmpA $setcspace -channel Y -separate $tmp2
+			convert $tmpA $setcspace -channel K -separate $tmp3
 			tmplist="$tmp0 $tmp1 $tmp2 $tmp3"
 	elif [ "$colorspace" = "RGB" -a "$colormodel" = "" ]
 		then
 			modelspace="RGB"
-			convert $tmpA -channel R -separate $tmp0
-			convert $tmpA -channel G -separate $tmp1
-			convert $tmpA -channel B -separate $tmp2
+			convert $tmpA $setcspace -channel R -separate $tmp0
+			convert $tmpA $setcspace -channel G -separate $tmp1
+			convert $tmpA $setcspace -channel B -separate $tmp2
 			tmplist="$tmp0 $tmp1 $tmp2"
-		else
+	elif [ "$colorspace" = "RGB" -a "$colormodel" != "" ]
+		then
 			modelspace=$colormodel
-			convert $tmpA -colorspace $colormodel -channel R -separate $tmp0
-			convert $tmpA -colorspace $colormodel -channel G -separate $tmp1
-			convert $tmpA -colorspace $colormodel -channel B -separate $tmp2
+			convert $tmpA $setcspace -colorspace $colormodel -channel R -separate $tmp0
+			convert $tmpA $setcspace -colorspace $colormodel -channel G -separate $tmp1
+			convert $tmpA $setcspace -colorspace $colormodel -channel B -separate $tmp2
 			tmplist="$tmp0 $tmp1 $tmp2"
+	elif [ "$colorspace" = "sRGB" -a "$colormodel" = "" ]
+		then
+			modelspace="sRGB"
+			convert $tmpA $setcspace -channel R -separate $tmp0
+			convert $tmpA $setcspace -channel G -separate $tmp1
+			convert $tmpA $setcspace -channel B -separate $tmp2
+			tmplist="$tmp0 $tmp1 $tmp2"
+	elif [ "$colorspace" = "sRGB" -a "$colormodel" != "" ]
+		then
+			modelspace=$colormodel
+			convert $tmpA $setcspace -colorspace $colormodel -channel R -separate $tmp0
+			convert $tmpA $setcspace -colorspace $colormodel -channel G -separate $tmp1
+			convert $tmpA $setcspace -colorspace $colormodel -channel B -separate $tmp2
+			tmplist="$tmp0 $tmp1 $tmp2"
+	else
+		errMsg "--- COLORSPACE $colorspace IS NOT ALLOWED ---"
 	fi
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"

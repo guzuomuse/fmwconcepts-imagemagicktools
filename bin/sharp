@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/05/2007 .......... revised 6/27/2008
+# Developed by Fred Weinhaus 10/05/2007 .......... revised 5/8/2012
 #
 # USAGE: sharp [-m method] [-f factor] infile outfile
 # USAGE: sharp [-st] infile
@@ -184,13 +184,13 @@ trap "rm -f $tmpA $tmpB $tmpM $tmpS; exit 1" 1 2 3 15
 function imagestats
 	{
 	data=`convert \( $1 -colorspace Gray \) -verbose info:`
-	min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$min" = "" ] && errMsg "--- MIN NOT FOUND --- "
-	max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$max" = "" ] && errMsg "--- MAX NOT FOUND --- "
-	mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$mean" = "" ] && errMsg "--- MEAN NOT FOUND --- "
-	std=`echo "$data" | sed -n '/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	std=`echo "$data" | sed -n 's/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$std" = "" ] && errMsg "--- STD NOT FOUND --- "
 	#
 	# express as percent
@@ -232,11 +232,11 @@ fi
 imagestats $tmpA	
 
 # get mean
-convert $tmpA -convolve "$ave" $tmpM
+convert $tmpA -define convolve:scale=\! -convolve "$ave" $tmpM
 
 # get std = sqrt( ave(x^2) - ave(x)^2 )
 # -gamma 2 is equivalent to sqrt
-convert \( $tmpA $tmpA -compose multiply -composite -convolve "$ave" \) \
+convert \( $tmpA $tmpA -compose multiply -composite -define convolve:scale=\! -convolve "$ave" \) \
 	\( $tmpM $tmpM -compose multiply -composite \) +swap \
 	-compose minus -composite -gamma 2 $tmpS
 	

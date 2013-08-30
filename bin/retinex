@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 11/15/2007 .......... revised 5/3/2010
+# Developed by Fred Weinhaus 11/15/2007 .......... revised 6/13/2013
 # 
 # USAGE: retinex [-m colormodel] [-f fact] [-c contrast] [-b bright] [-s sat] [-r res1,res2,res3] infile outfile
 # USAGE: retinex [-h or -help]
@@ -77,7 +77,7 @@
 # variations to do not seem to make much change in the result. 
 # The default values are 5,20,240.
 # 
-# Due to the use of -fx, this script may be a little slow.
+# NOTE: This script will be slow due the use of -fx, unless hdri is enabled.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -241,16 +241,50 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
+# use pfm so that it works faster in HDRI mode
 tmpA="$dir/retinex_$$.mpc"
 tmpB="$dir/retinex_$$.cache"
-tmpH="$dir/retinex_H_$$.png"
-tmpS="$dir/retinex_S_$$.png"
-tmp0="$dir/retinex_0_$$.png"
-tmp1="$dir/retinex_1_$$.png"
-tmp2="$dir/retinex_2_$$.png"
-tmp3="$dir/retinex_3_$$.png"
+tmpH="$dir/retinex_H_$$.pfm"
+tmpS="$dir/retinex_S_$$.pfm"
+tmp0="$dir/retinex_0_$$.pfm"
+tmp1="$dir/retinex_1_$$.pfm"
+tmp2="$dir/retinex_2_$$.pfm"
+tmp3="$dir/retinex_3_$$.pfm"
 trap "rm -f $tmpA $tmpB $tmpH $tmpS $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmpH $tmpS $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
+
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using retinex
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.1
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+#echo "cspace=$cspace"
+#echo "setcspace=$setcspace"
+
 
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
@@ -259,61 +293,148 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 		# save original
 		convert $tmpA $tmp0
 		# convert to HSL reusing $tmpA for Lightness
-		convert $tmpA -colorspace HSL -channel R -separate $tmpH
-		convert $tmpA -colorspace HSL -channel G -separate $tmpS
-		convert $tmpA -colorspace HSL -channel B -separate $tmpA
+		convert $tmpA $setcspace -colorspace HSL -channel R -separate $tmpH
+		convert $tmpA $setcspace -colorspace HSL -channel G -separate $tmpS
+		convert $tmpA $setcspace -colorspace HSL -channel B -separate $tmpA
 	fi
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
-# process image
-echo ""
-echo "Please Wait - It May Take Some Time To Process The Image"
-echo ""
 
+
+if [ "$im_version" -lt "06040201" ]; then 
+	echo ""
+	echo "Please Wait - It May Take Some Time To Process The Image"
+	echo ""
+fi
+
+# process image
 # get 3 resolution sizes
 res1=`echo "$res" | cut -d, -f1`
 res2=`echo "$res" | cut -d, -f2`
 res3=`echo "$res" | cut -d, -f3`
 
-# create reflectance images at each resolution size
-convert $tmpA \( +clone -blur 0x$res1 \) -fx "log((u/max(v,.000001))+1)" $tmp1
-convert $tmpA \( +clone -blur 0x$res2 \) -fx "log((u/max(v,.000001))+1)" $tmp2
-convert $tmpA \( +clone -blur 0x$res3 \) -fx "log((u/max(v,.000001))+1)" $tmp3
+# evaluate log(2)
+log2=`convert xc: -format "%[fx:log(2)]" info:`
 
-# get im version
-im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+# test for hdri enabled
+hdri_on=`convert -list configure | sed -n 's/^.*\(hdri\).*$/\1/p' | head -n 1`
+
+if [ "$hdri_on" = "hdri" ]; then
+	# use faster methods with hdri enabled
+	if [ "$im_version" -lt "06040201" ]; then 
+	
+		# original fx method
+		#convert $tmpA \( +clone -blur 0x$res1 \) -fx "log((u/max(v,.000001))+1)" $tmp1
+		#convert $tmpA \( +clone -blur 0x$res2 \) -fx "log((u/max(v,.000001))+1)" $tmp2
+		#convert $tmpA \( +clone -blur 0x$res3 \) -fx "log((u/max(v,.000001))+1)" $tmp3
+	
+	
+		# improved fx method
+		convert $tmpA \( +clone -blur 0x$res1 -evaluate max 1 \) \
+			+swap -compose divide -composite -fx "log(u+1)" $tmp1
+		convert $tmpA \( +clone -blur 0x$res2 -evaluate max 1 \) \
+			+swap -compose divide -composite -fx "log(u+1)" $tmp2
+		convert $tmpA \( +clone -blur 0x$res3 -evaluate max 1 \) \
+			+swap -compose divide -composite -fx "log(u+1)" $tmp3
+	
+	else
+		# non-fx method
+		convert $tmpA \( +clone -blur 0x$res1 -evaluate max 1 \) \
+			+swap -compose divide -composite -evaluate log 1 -evaluate multiply $log2 $tmp1
+		convert $tmpA \( +clone -blur 0x$res2 -evaluate max 1 \) \
+			+swap -compose divide -composite -evaluate log 1 -evaluate multiply $log2 $tmp2
+		convert $tmpA \( +clone -blur 0x$res3 -evaluate max 1 \) \
+			+swap -compose divide -composite -evaluate log 1 -evaluate multiply $log2 $tmp3
+	fi
+
+else
+	# process image
+	echo ""
+	echo "Please Wait - It May Take Some Time To Process The Image"
+	echo ""
+	
+	# use original fx method
+	convert $tmpA \( +clone -blur 0x$res1 \) -fx "log((u/max(v,.000001))+1)" $tmp1
+	convert $tmpA \( +clone -blur 0x$res2 \) -fx "log((u/max(v,.000001))+1)" $tmp2
+	convert $tmpA \( +clone -blur 0x$res3 \) -fx "log((u/max(v,.000001))+1)" $tmp3
+fi
 
 # average results (normalize as log reduces range of values)
 if [ "$im_version" -ge "06060904" ]; then 
-	convert $tmp1 $tmp2 $tmp3 -evaluate-sequence mean -normalize $tmp1
+	convert $tmp1 $tmp2 $tmp3 -evaluate-sequence mean $setcspace -normalize $tmp1
 else
 	convert $tmp1 $tmp2 $tmp3 -average -normalize $tmp1
 fi
 
+
 # convert back to RGB
 if [ "$colormodel" = "HSL" -o "$colormodel" = "hsl" ]
 	then	
-	convert $tmp0 -colorspace HSL $tmpH -compose CopyRed -composite $tmpS -compose CopyGreen -composite $tmp1 -compose CopyBlue -composite -colorspace RGB $tmp1
+	convert $tmp0 -colorspace HSL \
+		$tmpH -compose CopyRed -composite \
+		$tmpS -compose CopyGreen -composite \
+		$tmp1 -compose CopyBlue -composite \
+		-colorspace $cspace $tmp1
 fi
 
 # color boost blend only if needed
-if [ $fact -ne 0 ]
-	then
-	# create recolored image (normalize as log reduces range of values)
-	if [ "$colormodel" = "HSL" -o "$colormodel" = "hsl" ]
-		then	
-		convert $tmp0 \( +clone -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
-	else
-		convert $tmpA \( +clone -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
+if [ "$hdri_on" != "" ]; then
+	# use faster methods with hdri enabled
+	if [ $fact -ne 0 ]
+		then
+		# create recolored image (normalize as log reduces range of values)
+		if [ "$colormodel" = "HSL" -o "$colormodel" = "hsl" ]; then	
+			if [ "$im_version" -lt "06040201" ]; then 
+				# convert $tmp0 \( +clone $setcspace -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
+				convert $tmp0 \( +clone $setcspace -colorspace Gray -evaluate max 1 \) \
+					+swap $setcspace -compose divide -composite -fx "log(u+1)" $tmp2
+			else
+				convert $tmp0 \( +clone $setcspace -colorspace Gray -evaluate max 1 \) \
+					+swap $setcspace -compose divide -composite -evaluate log 1 -evaluate multiply $log2 $tmp2
+			fi
+		else
+			if [ "$im_version" -lt "06040201" ]; then 
+				# convert $tmpA \( +clone $setcspace -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
+				convert $tmpA \( +clone $setcspace -colorspace Gray -evaluate max 1 \) \
+					+swap $setcspace -compose divide -composite -fx "log(u+1)" $tmp2
+			else
+				convert $tmpA \( +clone $setcspace -colorspace Gray -evaluate max 1 \) \
+					+swap $setcspace -compose divide -composite -evaluate log 1 -evaluate multiply $log2 $tmp2
+			fi
+		fi
+		convert $tmp2 $tmp1 $setcspace -compose multiply -composite -normalize $tmp3
+	
+		# blend recolored with unrecolored	
+		if [ "$im_version" -lt "06050304" ]; then
+			composite -blend $fact% $tmp3 $tmp1 $tmp1
+		else
+			convert $tmp1 $tmp3 -define compose:args=$fact% -compose blend -composite $tmp1
+		fi
+	
 	fi
-	convert $tmp2 $tmp1 -compose multiply -composite -normalize $tmp3
-
-	# blend recolored with unrecolored	
-	composite -blend $fact% $tmp3 $tmp1 $tmp1
-
+else
+	# use original fx method
+	if [ $fact -ne 0 ]
+		then
+		# create recolored image (normalize as log reduces range of values)
+		if [ "$colormodel" = "HSL" -o "$colormodel" = "hsl" ]
+			then	
+			convert $tmp0 \( +clone $setcspace -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
+		else
+			convert $tmpA \( +clone $setcspace -colorspace Gray \) -fx "log((u/max(v,.000001))+1)" $tmp2
+		fi
+	
+		convert $tmp2 $tmp1 $setcspace -compose multiply -composite -normalize $tmp3
+	
+		# blend recolored with unrecolored	
+		if [ "$im_version" -lt "06050304" ]; then
+			composite -blend $fact% $tmp3 $tmp1 $tmp1
+		else
+			convert $tmp1 $tmp3 -define compose:args=$fact% -compose blend -composite $tmp1
+		fi
+	fi
 fi
 
 if [ $bright -ne 100 -o $sat -ne 100 ]

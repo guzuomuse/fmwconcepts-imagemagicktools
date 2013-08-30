@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/24/2008 .......... revised 12/20/2009
+# Developed by Fred Weinhaus 3/24/2008 .......... revised 6/4/2013
 #
 # USAGE: colorspectrum [-c columns] [-r rows] [-l] infile outfile
 # USAGE: colorspectrum [-h or -help]
@@ -161,14 +161,62 @@ fi
 tmpA="$dir/colorspectrum_$$.mpc"
 tmpB="$dir/colorspectrum_$$.cache"
 tmp0="$dir/colorspectrum_0_$$.miff"
-trap "rm -f $tmpA $tmpB $tmp0; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0; exit 1" 1 2 3 15
+tmp1="$dir/colorspectrum_1_$$.miff"
+tmp2="$dir/colorspectrum_2_$$.miff"
+tmp3="$dir/colorspectrum_3_$$.miff"
+trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
 
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
 	: 'do nothing'
 	else
 		errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+fi
+
+# test for minimum IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# get colorspace and type
+# colorspace swapped at IM 6.7.5.5, but not properly fixed until 6.7.6.6
+# before swap verbose info reported colorspace=RGB after colorspace=sRGB
+# not all formats report grayscale for colorspace (gif, tiff, jpg do not), but type will be grayscale
+colorspace=`identify -ping -verbose $tmpA | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
+type=`identify -ping -verbose $tmpA | sed -n 's/^.*Type: \([^ ]*\).*$/\1/p'`
+if [ "$colorspace" != "RGB" -a "$colorspace" != "sRGB" ]; then
+	errMsg "--- FILE $infile MUST BE RGB, sRGB ---"
+fi
+if [ "$type" = "Grayscale" ]; then
+	errMsg "--- HSL CONVERSION IS NOT ALLOWED WITH GRAYSCALE IMAGERY ---"
+fi
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using colorspectrum.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+# Note: added $setcspace after generating PPM image and before converting to HSL
+# Slight difference in color arrangement for IM before 6.7.6.7
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
 fi
 
 # get quantum max value
@@ -183,12 +231,12 @@ qval=`convert xc: -format "%q" info:`
 # when echo $spectrum it prints each line feed as a space so it is all one line.
 
 # get unique spectrum colors from rgb image as lines of text
-spectrum1=`convert $tmpA +matte -depth $qval +dither -colors $columns -unique-colors txt:- | \
+spectrum1=`convert $tmpA -alpha off -depth $qval +dither -colors $columns -unique-colors txt:- | \
 	sed -n 's/ //g; s/[0-9]*,[0-9]*:(\([0-9]*,[0-9]*,[0-9]*\).*/\1/; s/,/ /g; 2,$p'`
 	
 # convert rgb text spectrum to HSL single row image
 # Use NetPBM (PPM plain color format implied intermediate image)
-echo "P3 $columns 1 $qmax\n $spectrum1" | convert - -colorspace HSL $tmp0
+echo "P3 $columns 1 $qmax\n $spectrum1" | convert - $setcspace -colorspace HSL $tmp0
 
 # convert HSL single row colors image back to text and sort according to hue
 spectrum2=`convert $tmp0 txt:- | \
@@ -199,11 +247,14 @@ spectrum2=`convert $tmp0 txt:- | \
 echo "P3 $columns 1 $qmax\n $spectrum2" | convert - $tmp0
 
 # convert HSL colors single row image to RGB single row spectrum image
-convert $tmp0 -colorspace HSL \
-	\( $tmp0 -channel Red -separate \) -compose CopyRed -composite \
-	\( $tmp0 -channel Green -separate \) -compose CopyGreen -composite \
-	\( $tmp0 -channel Blue -separate \) -compose CopyBlue -composite \
-	-colorspace RGB $tmp0
+convert $tmp0 $setcspace -channel Red -separate $tmp1
+convert $tmp0 $setcspace -channel Green -separate $tmp2
+convert $tmp0 $setcspace -channel Blue -separate $tmp3
+convert $tmp1 -colorspace HSL \
+	$tmp1 -compose CopyRed -composite \
+	$tmp2 -compose CopyGreen -composite \
+	$tmp3 -compose CopyBlue -composite \
+	-colorspace $cspace $tmp0
 
 if [ "$list" = "on" ]
 	then

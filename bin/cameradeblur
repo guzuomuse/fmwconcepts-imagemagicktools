@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/22/2009 .......... revised 6/7/2010
+# Developed by Fred Weinhaus 8/22/2009 .......... revised 12/24/2011
 #
-# USAGE: cameradeblur [-t type] [-a amount] [-r rotation] [-n noise] [-m method] infile outfile
+# USAGE: cameradeblur [-t type] [-a amount] [-r rotation] [-n noise] infile outfile
 # USAGE: cameradeblur [-h or -help]
 #
 # OPTIONS:
@@ -15,9 +15,6 @@
 #                      motion blur; floats; -180<=rotation<=180; default=0
 # -n     noise         estimate of the noise to signal power ratio; float>=0; 
 #                      default=0
-# -m     method        computation method for computing defocus filter; 
-#                      choices are slow (or s) or fast (or f); the slow 
-#                      method will be more precise; the default=fast
 # 
 ###
 #
@@ -59,10 +56,6 @@
 # estimate of the variance of the whole image (to get the signal variance). 
 # Values are floats>=0. The default=0
 # 
-# -m method ... METHOD for computing the defocus filter. The choices are: 
-# slow (or s) or fast (or f). The slow method will be more precise. The 
-# default=fast.
-# 
 # REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled 
 # in any quantum level of Q8, Q16 or Q32. Also requires the FFTW delegate 
 # library.
@@ -78,7 +71,6 @@
 type=defocus			#defocus or motion
 amount=10				#length of motion blur or diameter of defocus
 rotation=0				#rotation for motion blur
-method="fast"			#computation method for defocus filter; slow or fast
 noise=0					#noise to signal variance estimate
 
 # set directory for temporary files
@@ -127,7 +119,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 12 ]
+elif [ $# -gt 10 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -181,18 +173,6 @@ else
 					   noise=`expr "$1" : '\([.0-9]*\)'`
 					   [ "$noise" = "" ] && errMsg "--- NOISE=$noise MUST BE A NON-NEGATIVE FLOAT ---"
 					   ;;
-				-m)    # get method
-					   shift  # to get the next parameter
-					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID METHOD SPECIFICATION ---"
-					   checkMinus "$1"
-					   method=`echo "$1" | tr "[:upper:]" "[:lower:]"`
-					   case "$method" in 
-					   		slow|s) method="slow" ;;
-					   		fast|f) method="fast" ;;
-					   		*) errMsg "--- METHOD=$method IS AN INVALID VALUE ---" 
-					   	esac
-					   ;;
 				 -)    # STDIN and end of arguments
 					   break
 					   ;;
@@ -218,22 +198,24 @@ fi
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
 # setup temporary images
-tmpA1="$dir/fftblurideal_1_$$.mpc"
-tmpB1="$dir/fftblurideal_1_$$.cache"
-tmpF="$dir/fftblurideal_F_$$.pfm"
-tmpL="$dir/fftidealblur_L_$$.pfm"
-tmpA="$dir/fftidealdeblur_A_$$.pfm"
-trap "rm -f $tmpA1 $tmpB1 $tmpF $tmpL $tmpA; exit 0" 0
-trap "rm -f $tmpA1 $tmpB1 $tmpF $tmpL $tmpA; exit 1" 1 2 3 15
+tmpI1="$dir/cameradeblur_I_$$.mpc"
+tmpI2="$dir/cameradeblur_I_$$.cache"
+tmpF1="$dir/cameradeblur_F_$$.mpc"
+tmpF2="$dir/cameradeblur_F_$$.cache"
+tmpL="$dir/cameradeblur_L_$$.pfm"
+tmpA1="$dir/cameradeblur_A_$$.mpc"
+tmpA2="$dir/cameradeblur_A_$$.cache"
+trap "rm -f $tmpI1 $tmpI2 $tmpA1 $tmpA2 $tmpF1 $tmpF2 $tmpL; exit 0" 0
+trap "rm -f $tmpI1 $tmpI2 $tmpA1 $tmpA2 $tmpF1 $tmpF2 $tmpL; exit 1" 1 2 3 15
 
 # read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
+convert -quiet -regard-warnings "$infile" +repage "$tmpI1" ||
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 
 # test for valid version of IM
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06040403" ] && errMsg "--- REQUIRES IM VERSION 6.5.4-3 OR HIGHER ---"
 
 # test for hdri enabled
@@ -241,8 +223,8 @@ hdri_on=`convert -list configure | grep "enable-hdri"`
 [ "$hdri_on" = "" ] && errMsg "--- REQUIRES HDRI ENABLED IN IM COMPILE ---"
 
 # get image dimensions for later cropping as input is padded to square, even dimensions
-width=`identify -ping -format "%w" $tmpA1`
-height=`identify -ping -format "%h" $tmpA1`
+width=`identify -ping -format "%w" $tmpI1`
+height=`identify -ping -format "%h" $tmpI1`
 
 # compute padded to even dimensions
 w1=`convert xc: -format "%[fx:($width%2)==0?$width:($width+1)]" info:`
@@ -266,10 +248,10 @@ cyd=`convert xc: -format "%[fx:sqrt(2)*$cy]" info:`
 qnoise=`convert xc: -format "%[fx:quantumrange*$noise]" info:`
 
 # test if image has alpha and set up copy to output
-is_alpha=`convert $tmpA1 -format "%A" info:`
+is_alpha=`convert $tmpI1 -format "%A" info:`
 if [ "$is_alpha" = "True" ]; then
-	convert $tmpA1 -alpha extract $tmpA 
-	addalpha="$tmpA -compose copy_opacity -composite"
+	convert $tmpI1 -alpha extract $tmpA1 
+	addalpha="$tmpI1 -compose copy_opacity -composite"
 else
 	addalpha=""
 fi
@@ -296,8 +278,8 @@ diam is diameter of lens defocus in spatial domain
 '
 
 # compute spatial frequency units and other params and create filter
-if [ "$type" = "motion" ]
-	then 
+if [ "$type" = "motion" ]; then 
+
 	# compute spatial frequency units times pi*length=pi*amount, 
 	# where spatial frequency units fx=1/w, fy=1/h
 	# note f=1/dimension and w=pi*f=pi/dimension
@@ -312,17 +294,19 @@ if [ "$type" = "motion" ]
 	if [ "$sinang" = "0" -o "$sinang" = "0.0" ]; then
 		convert -size ${w1}x1 xc: \
 			-fx "zz=$fxd*(i-$cx)*$cosang; zz?sin(zz)/(zz):1" \
-			-scale ${w1}x${h1}\! $tmpF
+			-scale ${w1}x${h1}\! $tmpF1
 	elif [ "$cosang" = "0" -o "$cosang" = "0.0" ]; then
 		convert -size 1x${h1} xc: \
 			-fx "zz=-$fyd*(j-$cy)*$sinang; zz?sin(zz)/(zz):1" \
-			-scale ${w1}x${h1}\! $tmpF
+			-scale ${w1}x${h1}\! $tmpF1
+	
 	else
+	
 : '
-		# old method
+		# old slow method
 		convert -size ${w1}x${h1} xc: -monitor \
 			-fx "zz=($fxd*(i-$cx)*$cosang+$fyd*(j-$cy)*$sinang); zz?sin(zz)/(zz):1" \
-			$tmpF
+			$tmpF1
 '
 		# fast method
 		# note -compose divide has zero divide value of 0 and for sinc 
@@ -342,46 +326,58 @@ if [ "$type" = "motion" ]
 		\( -clone 1 -clone 2 -compose plus -composite \) \
 		\( -clone 3 -function sinusoid "$freq,0,1,0" -clone 3 +swap -compose divide -composite \) \
 		-delete 0-3 -linear-stretch 0x1 -fill white -opaque black \
-		$tmpF
+		$tmpF1
 	fi
 	
-elif [ "$type" = "defocus" ]
-	then
-	# compute spatial frequency units times pi*diameter=pi*amount, 
-	# where spatial frequency units fx=1/w, fy=1/h
-	# note f=1/dimension and w=pi*f=pi/dimension
-	fxd=`convert xc: -format "%[fx:$amount*pi/$w1]" info:`
-	fyd=`convert xc: -format "%[fx:$amount*pi/$h1]" info:`
+elif [ "$type" = "defocus" ]; then
 
-	# create jinc filter
-	a0=0.5; a1=-.56249985; a2=.21093573; a3=-.03954289; a4=.00443319; a5=-.00031781; a6=.00001109
-	uu="(zz/3)"
-	jinc1="($a0+$a1*pow($uu,2)+$a2*pow($uu,4)+$a3*pow($uu,6)+$a4*pow($uu,8)+$a5*pow($uu,10)+$a6*pow($uu,12))"
-
-	b0=.79788456; b1=.00000156; b2=.01659667; b3=.00017105; b4=-.00249511; b5=.00113653; b6=-.00020033
-	c0=-2.35619; c1=.12499612; c2=-.00005650; c3=-.00637879; c4=.00074348; c5=.00079824; c6=-.00029166
-	iuu="(3/zz)"
-	vv="($b0+$b1*$iuu+$b2*pow($iuu,2)+$b3*pow($iuu,3)+$b4*pow($iuu,4)+$b5*pow($iuu,5)+$b6*pow($iuu,6))"
-	ww="(zz+$c0+$c1*$iuu+$c2*pow($iuu,2)+$c3*pow($iuu,3)+$c4*pow($iuu,4)+$c5*pow($iuu,5)+$c6*pow($iuu,6))"
-	jinc2="$vv*cos($ww)/(zz*sqrt(zz))"
-
-	if [ "$method" = "slow" ]; then
-		# exact method
+	if [ "$im_version" -lt "06060005" ]; then
+		# create A&S jinc function components
 		# note: factor of 2 below due to A&S formula has max of 1/2 and we need it normalize to 1
+		a0=0.5; a1=-.56249985; a2=.21093573; a3=-.03954289; a4=.00443319; a5=-.00031781; a6=.00001109
+		uu="(zz/3)"
+		jinc1="($a0+$a1*pow($uu,2)+$a2*pow($uu,4)+$a3*pow($uu,6)+$a4*pow($uu,8)+$a5*pow($uu,10)+$a6*pow($uu,12))"
+	
+		b0=.79788456; b1=.00000156; b2=.01659667; b3=.00017105; b4=-.00249511; b5=.00113653; b6=-.00020033
+		c0=-2.35619; c1=.12499612; c2=-.00005650; c3=-.00637879; c4=.00074348; c5=.00079824; c6=-.00029166
+		iuu="(3/zz)"
+		vv="($b0+$b1*$iuu+$b2*pow($iuu,2)+$b3*pow($iuu,3)+$b4*pow($iuu,4)+$b5*pow($iuu,5)+$b6*pow($iuu,6))"
+		ww="(zz+$c0+$c1*$iuu+$c2*pow($iuu,2)+$c3*pow($iuu,3)+$c4*pow($iuu,4)+$c5*pow($iuu,5)+$c6*pow($iuu,6))"
+		jinc2="$vv*cos($ww)/(zz*sqrt(zz))"
+
+		# compute spatial frequency units times pi times diameter, 
+		# where diameter = amount 
+		# and where spatial frequency units fx=1/w, fy=1/h
+		# and jinc(x)=j1(x)/(x)
+		fxd=`convert xc: -format "%[fx:$amount*pi/$w1]" info:`
+		fyd=`convert xc: -format "%[fx:$amount*pi/$h1]" info:`
+		jincfunc="(zz<=3)?2*$jinc1:2*$jinc2"
+		
 		convert -size ${w1}x${h1} xc: -monitor \
-			-fx "zz=hypot($fxd*(i-$cx),$fyd*(j-$cy)); (zz<=3)?2*$jinc1:2*$jinc2" \
-			$tmpF
-	
-	elif [ "$method" = "fast" ]; then
-		# approximate radial method -- works currently only for square images
-		# note: factor of 2 below due to A&S formula has max of 1/2 and we need it normalize to 1
-		convert -size 1x${cyd} gradient: -rotate 90 \
-			-fx "zz=hypot($fxd*i,$fyd*j); (zz<=3)?2*$jinc1:2*$jinc2" \
-			$tmpL		
-		convert \( -size ${w1d}x${h1d} radial-gradient: -negate \
-			-gravity center -crop ${w1}x${h1}+0+0 +repage \) \
-			$tmpL -clut $tmpF
+			-fx "zz=hypot($fxd*(i-$cx),$fyd*(j-$cy)); $jincfunc" +monitor \
+			$tmpF1
+		
+		
+	else
+		# use -fx jinc function
+		# compute spatial frequency units times pi times diameter, 
+		# where diameter = amount
+		# and where spatial frequency units fx=1/w, fy=1/h
+		# and -fx jinc(x)=2*j1(pi*x)/(pi*x), 
+		# so leave out pi in fxd and fyd
+		# and -fx jinc(x) already normalized to max value of 1, 
+		# so leave out factor of 2
+		fxd=`convert xc: -format "%[fx:$amount/$w1]" info:`
+		fyd=`convert xc: -format "%[fx:$amount/$h1]" info:`
+
+		convert \
+		\( -size ${w1}x1 xc: -fx "$fxd*(i-$cx))" -scale ${w1}x${h1}! -evaluate pow 2 \) \
+		\( -size 1x${h1} xc: -fx "$fyd*(j-$cy))" -scale ${w1}x${h1}! -evaluate pow 2 \) \
+		-compose plus -composite -evaluate pow 0.5 -fx "jinc(u)" \
+		$tmpF1
+		
 	fi
+
 fi
 
 debug="true"
@@ -389,7 +385,7 @@ if $debug; then
 inname=`convert $infile -format "%t" info:`
 rr=`echo $rotation | tr "-" "m"`
 lval=100
-convert $tmpF -linear-stretch 1x1 -evaluate log $lval ${inname}_ideal${type}${amount}_r${rr}_filt_log$lval.png
+convert $tmpF1 -linear-stretch 1x1 -evaluate log $lval ${inname}_ideal${type}${amount}_r${rr}_filt_log$lval.png
 fi
 
 
@@ -397,20 +393,20 @@ fi
 # divide both components by single filter (FxR)/(FxF + n) and (FxI)/(FxF + n),
 # transform back
 #
-# first line takes fft of image and separates frames
+# first line takes fft of image (as separate frames) and loads filter
 # second line creates denominator
 # third line creates FxR
 # fourth line creates FxI
 # fifth line creates (FxR/(FxF + n)
 # sixth line creates (FxI/(FxF + n)
 # seventh line deletes all intermediate steps and does ift of resulting components
-convert \( $tmpA1 -alpha off +fft \) \
-		\( $tmpF $tmpF -compose multiply -composite -evaluate add $qnoise \) \
-		\( -clone 0 $tmpF -compose multiply -composite \) \
-		\( -clone 1 $tmpF -compose multiply -composite \) \
-		\( -clone 3 -clone 2 +swap -compose divide -composite \) \
-		\( -clone 4 -clone 2 +swap -compose divide -composite \) \
-		-delete 0-4 +ift -crop ${width}x${height}+0+0 +repage \
+convert \( $tmpI1 -alpha off +fft \) $tmpF1 \
+		\( -clone 2 -clone 2 -compose multiply -composite -evaluate add $qnoise \) \
+		\( -clone 0 -clone 2 -compose multiply -composite \) \
+		\( -clone 1 -clone 2 -compose multiply -composite \) \
+		\( -clone 4 -clone 3 +swap -compose divide -composite \) \
+		\( -clone 5 -clone 3 +swap -compose divide -composite \) \
+		-delete 0-5 +ift -crop ${width}x${height}+0+0 +repage \
 		$addalpha $outfile
 
 exit 0

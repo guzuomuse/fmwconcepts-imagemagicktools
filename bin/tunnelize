@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/8/2008 .......... revised 5/8/2008
+# Developed by Fred Weinhaus 5/8/2008 .......... revised 8/22/2008
 #
 # USAGE: tunnelize [-m mode] infile outfile
 # USAGE: tunnelize [-h or -help]
@@ -16,7 +16,7 @@
 # PURPOSE: To create a tunnel-like effect on an image.
 # 
 # DESCRIPTION: TUNNELIZE creates a tunnel-like effect on an image 
-# by swapping polar coordinates for cartesian coordinates.
+# by swapping polar for cartesian coordinates.
 # 
 # OPTIONS: 
 # 
@@ -129,6 +129,7 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
+# NOTE: testing with IM 6.6.0.10, 6.7.4.10, 6.7.6.10, 6.7.9.0, the results are not as sharp as the examples.
 
 # test if image an ordinary, readable and non-zero size
 if [ -f $infile -a -r $infile -a -s $infile ]
@@ -147,6 +148,7 @@ pi2=`convert xc: -format "%[fx:2*pi]" info:`
 # process image
 if [ $mode -eq 1 ]
 	then
+echo "got here"
 	convert $infile -monitor -fx "xx=(i-$w2); yy=(j-$h2); rr=hypot(xx,yy); aa=atan2(yy,xx); u.p{(aa+pi)*w/$pi2,rr*h/$r2}" $outfile
 else
 	convert $infile -monitor -fx "xx=(i-$w2); yy=(j-$h2); rr=hypot(xx,yy); aa=atan2(yy,xx); u.p{rr*w/$r2,(aa+pi)*h/$pi2}" $outfile

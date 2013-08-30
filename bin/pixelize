@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/8/2008 .......... revised 3/9/2011
+# Developed by Fred Weinhaus 5/8/2008 .......... revised 8/23/2011
 #
 # USAGE: pixelize [-s size] [-m mode] infile outfile
 # USAGE: pixelize [-h or -help]
@@ -37,6 +37,7 @@
 
 # set default values
 size=3
+mode=1
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -114,7 +115,7 @@ else
 					   checkMinus "$1"
 					   mode=`expr "$1" : '\([0-9]*\)'`
 					   [ "$mode" = "" ] && errMsg "MODE=$mode MUST BE AN INTEGER"
-					   [ $mode -neq 1 -a $mode -neq 2 ] && errMsg "--- MODE=$mode MUST BE EITHER 1 OR 2 ---"
+					   [ $mode -ne 1 -a $mode -ne 2 ] && errMsg "--- MODE=$mode MUST BE EITHER 1 OR 2 ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -157,7 +158,7 @@ minify=`convert xc: -format "%[fx:100/$size]" info:`
 # process image
 if [ $mode -eq 1 ]; then
 	convert $infile -resize $minify% -scale ${w}x${h}! $outfile
-elif [ $mode -eq 1 ]; then
+elif [ $mode -eq 2 ]; then
 	convert $infile -sample $minify% -scale ${w}x${h}! $outfile
 fi
 exit 0

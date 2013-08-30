@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 12/12/2007 .......... revised 5/9/2009
+# Developed by Fred Weinhaus 12/12/2007 .......... revised 4/30/2013
 # 
 # USAGE: unrotate [-f fuzzval] [-c coords] [-a angle] [-l left] [-r right ] [-t top ] [-b bottom ] infile [outfile]
 # USAGE: unrotate [-h or -help]
@@ -239,12 +239,17 @@ fi
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/unrotate_$$.mpc"
 tmpB="$dir/unrotate_$$.cache"
-tmp0="$dir/unrotate_0_$$.png"
-tmp1="$dir/unrotate_1_$$.png"
-tmp2="$dir/unrotate_2_$$.png"
-tmp3="$dir/unrotate_3_$$.png"
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
+tmp0="$dir/unrotate_0_$$.mpc"
+tmp0a="$dir/unrotate_0_$$.cache"
+tmp1="$dir/unrotate_1_$$.mpc"
+tmp1a="$dir/unrotate_1_$$.cache"
+tmp2="$dir/unrotate_2_$$.mpc"
+tmp2a="$dir/unrotate_2_$$.cache"
+tmp3="$dir/unrotate_3_$$.mpc"
+tmp3a="$dir/unrotate_3_$$.cache"
+trap "rm -f $tmpA $tmpB $tmp0 $tmp0a $tmp1 $tmp1a $tmp2 $tmp2a $tmp3 $tmp3a; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp0 $tmp0a $tmp1 $tmp1a $tmp2 $tmp2a $tmp3 $tmp3a; exit 1" 1 2 3 15
+
 
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 	then
@@ -252,6 +257,17 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
+
+# setup setcspace
+# since do not know exact versions (see below) use simple convert test
+test=`convert xc:black -set colorspace RGB txt:- | tail -n 1 | sed -n 's/^[0-9]*,[0-9]*: [(].*[)]  #.* \(.*\)$/\1/p'`
+if [ "$test" != "black" ]; then
+	setcspace="-set colorspace sRGB"
+else
+	setcspace=""
+fi
+	
+	
 
 # function to get dimensions
 dimensions()
@@ -313,7 +329,9 @@ paddedBinary()
 		-draw "matte $coords floodfill" -fill white +opaque none $tmp0
 	
 	# make exterior black and inside white	
-	convert \( -size ${width}x${height} xc:black \) $tmp0 -composite $tmp1
+	convert \( -size ${width}x${height} xc:black \) $tmp0 -compose over -composite $tmp1
+#	convert $tmp0 -background black -compose over -flatten $tmp1
+
 	}
 
 # function to get black to white transition location along row or column
@@ -322,12 +340,12 @@ getTransition()
 	{
 	img1D=$1
 	dim=$2
-	dir=$3
+	direct=$3
 	rowcol=`convert $img1D -compress None -depth 8 txt:-`
 	vals=`echo "$rowcol" | sed -n 's/^[0-9]*,[0-9]*: [(].*[)]  #...... \(.*\)$/\1/p'`
 	vals_Array=($vals)
 #echo "$vals"
-	if [ "$dir" = "inc" ]
+	if [ "$direct" = "inc" ]
 		then
 		i=0
 		while [ $i -lt $dim ]
@@ -336,7 +354,7 @@ getTransition()
 			i=`expr $i + 1`
 		done
 		location=$i
-	elif [ "$dir" = "dec" ]
+	elif [ "$direct" = "dec" ]
 		then
 		i=$dim
 		while [ $i -ge 0 ]
@@ -367,16 +385,24 @@ cropImage()
 			thresh=`echo "scale=1; (99 - (1.07 * $angle)) / 1" | bc`
 		fi
 		thresh=$thresh%
-		normalize="-normalize"
+#		normalize="-normalize"
+		normalize="-contrast-stretch 0"
+
 	else
 		echo "--- INVALID ANGLE VALUE ---"
 		exit 1
 	fi
 
 	# average to one row and one column
-	convert $tmp1 -filter box -resize 1x${height}! $normalize -threshold $thresh $tmp2
-	convert $tmp1 -filter box -resize ${width}x1! $normalize -threshold $thresh $tmp3
-	
+#	convert $tmp1 -filter box -resize 1x${height}! $normalize -threshold $thresh $tmp2
+#	convert $tmp1 -filter box -resize ${width}x1! $normalize -threshold $thresh $tmp3
+
+	# need to add -set colorspace RGB for versions after 6.7.7.7 to convert to nonlinear gray so thresholds correctly
+	# some versions after 6.6.9.10 and before 6.7.2.10 (tested at 6.7.2.0 and 6.7.2.1) produce srgb(...) values so must trap out -set colorspace sRGB before the output so they report black and white
+	# with the above scheme a few odd versions will show some white in the corners (e.g. tests show that in 6.7.7.8, 6.7.7.10, 6.7.8.2, 6.7.8.3, 6.8.4.0, 6.8.4.2, but not before 6.7.7.8 or 6.8.1.9, 6.8.3.9, 6.8.4.3 and after)
+	convert $tmp1 -scale 1x${height}! $normalize -set colorspace RGB -threshold $thresh $setcspace $tmp2
+	convert $tmp1 -scale ${width}x1! $normalize -set colorspace RGB -threshold $thresh $setcspace $tmp3
+
 	# get top and bottom by locating first occurence of value=white from top and bottom of column
 	getTransition $tmp2 $height "inc"
 	top=$location
@@ -390,7 +416,7 @@ cropImage()
 	
 	getTransition $tmp3 $widthm1 "dec"
 	right=$location
-		
+
 	#compute start x and y and width and height
 	if [ "$trim" = "" ]
 		then
@@ -404,6 +430,9 @@ cropImage()
 		new_width=`expr $right - $left - $lt + $rt + 1`
 		new_height=`expr $bottom - $top - $tp + $bm + 1`
 	fi
+
+#echo "top=$top; bottom=$bottom; left=$left; right=$right;"		
+#echo "new_x=$new_x; new_y=$new_y; new_width=$new_width; new_height=$new_height;"		
 
 	#crop image
 	convert $tmpA[${new_width}x${new_height}+${new_x}+${new_y}] +repage $tmpA
@@ -476,7 +505,9 @@ else
 	echo "Image Is Being Rotated $rotang degrees"
 	echo ""
 	# unrotate
-	convert $tmpA +repage -background $color -rotate $rotang $tmpA
+	# fixed 8/20/2012 +repage issue (after rotate) that started between IM 6.7.2.10 and IM 6.7.3.10 and continued
+	# convert $tmpA +repage -background $color -rotate $rotang $tmpA
+	convert $tmpA +repage -background $color -rotate $rotang +repage $tmpA
 	# process to trim (no rotation)
 	paddedBinary  $fuzzval
 	cropImage "trim" ""

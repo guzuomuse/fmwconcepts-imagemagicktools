@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/22/2010 .......... revised 11/19/2010
+# Developed by Fred Weinhaus 7/22/2010 .......... revised 6/13/2013
 # 
 # USAGE: locatecolors -b begincolor -e endcolor [-m mode] infile outfile
 # USAGE: locatecolors [-h or -help]
@@ -180,6 +180,37 @@ trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB
 trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB2; exit 1" 1 2 3 15
 
 
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using locatecolors.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
+
 # test input image
 convert -quiet -regard-warnings "$infile" +repage "$tmp1A" ||
 	errMsg  "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
@@ -277,8 +308,9 @@ elif [ "$mode" = "or" ]; then
 	function="plus"
 fi
 
+
 # process image
-convert $tmp1A -alpha off -colorspace rgb -depth 8 -separate \
+convert $tmp1A -alpha off $setcspace -depth 8 -separate \
 	\( -clone 0 $redproc \) \
 	\( -clone 1 $greenproc \) \
 	\( -clone 2 $blueproc \) \

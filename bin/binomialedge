@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/18/2007 .......... revised 3/5/2010
+# Developed by Fred Weinhaus 9/18/2007 .......... revised 6/1/2013
 # 
 # USAGE: binomialedge [-w width] [-k kind] [-m mix] [-e edge] [-t threshold] [-b blur] infile outfile
 # USAGE: binomialedge [-h or -help]
@@ -286,12 +286,36 @@ fi
 
 tmpA="$dir/binomialedge_$$.mpc"
 tmpB="$dir/binomialedge_$$.cache"
-tmp0="$dir/binomialedge_0_$$.png"
-tmp1="$dir/binomialedge_1_$$.png"
+tmp0="$dir/binomialedge_0_$$.miff"
+tmp1="$dir/binomialedge_1_$$.miff"
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1; exit 1" 1 2 3 15
 
-if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using binomialedge.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.7
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+if convert -quiet -regard-warnings "$infile" +repage $setcspace "$tmpA"
 	then
 	: 'do nothing'
 	else
@@ -347,19 +371,21 @@ fi
 # get thresholded edge image
 if [ $edge != 2 ]
 	then
-	convert $tmpA \( $tmpA -convolve "$kern1D" \) -compose minus +swap -composite \
+	convert $tmpA \( $tmpA -define convolve:scale=\! -convolve "$kern1D" \) +swap -compose minus -composite \
 		-colorspace Gray $blurstr -contrast-stretch 0% $threshstr $tmp0
 fi
 
 #process the image
 if [ "$kind" = "low" ]
 	then
-	convert $tmpA -convolve "$kern1D" $tmp1
-	composite -blend $mix% $tmp1 $tmpA -matte $tmp1
+	convert $tmpA -define convolve:scale=\! -convolve "$kern1D" $tmp1
+#	composite -blend $mix% $tmp1 $tmpA $tmp1
+	convert $tmpA $tmp1 -define compose:args=$mix% -compose blend -composite $tmp1
 elif [ "$kind" = "high" ]
 	then
-	convert $tmpA \( $tmpA -convolve "$kern1D" \) -compose minus +swap -composite -normalize $tmp1
-	composite -blend $mix%x100% $tmp1 $tmpA -matte $tmp1
+	convert $tmpA \( $tmpA -define convolve:scale=\! -convolve "$kern1D" \) +swap -compose minus -composite -normalize $tmp1
+#	composite -blend $mix%x100% $tmp1 $tmpA $tmp1
+	convert $tmpA $tmp1 -define compose:args=$mix%x100% -compose blend -composite $tmp1
 fi
 
 # composite input image and sharpened image using edge mask image

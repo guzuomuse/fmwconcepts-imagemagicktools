@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/24/2009 .......... revised 8/18/2010
+# Developed by Fred Weinhaus 12/24/2009 .......... revised 6/30/2011
 #
 # USAGE: downsize [-s size] [-t toler] [-c copy] infile outfile
 # USAGE: downsize [-help]
@@ -173,9 +173,6 @@ fi
 # test that outfile provided
 [ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
 
-
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
 
 # set up temp file
 tmpA1="$dir/downsize_1_$$.mpc"

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 9/22/2008 .......... revised 9/23/2008
+# Developed by Fred Weinhaus 9/22/2008 .......... revised 6/14/2013
 #
 # USAGE: slice blackpt,whitept [-m mode] [-i icolor] [-e ecolor] infile outfile
 # USAGE: slice [-h or -help]
@@ -208,6 +208,30 @@ tmpB3="$dir/slice_3_$$.cache"
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using sketch.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
 
 # test input image
 convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
@@ -258,7 +282,7 @@ elif [ "$mode" = "" -a $qdepth -ne 32 ]; then
 	whitept=$(($whitept+1))
 	[ $blackpt -ge $whitept ] && errMsg "--- BLACKPOINT MUST BE LESS THAN WHITEPOINT ---"
 else
-	errMSG "--- UNKNOWN MODE ---"
+	errMsg "--- UNKNOWN MODE ---"
 fi
 
 
@@ -362,18 +386,19 @@ convert $tmpA2 \
 	-fill white -opaque none \
 	-alpha off \
 	$tmpA2
+	
 
 # process the grayscale image with the lut, use as mask when "image" and colorize as appropriate
 if [ "$icolor" != "image" -a "$ecolor" != "image" ]; then
-	convert \( $tmpA1 -colorspace gray \) $tmpA2 \
-		-clut $negatize $ecolorize $icolorize $addalpha $outfile
+	convert \( $tmpA1 $setcspace -colorspace gray \) $tmpA2 \
+		-interpolate nearest-neighbor -clut $negatize $ecolorize $icolorize $addalpha $outfile
 elif [ "$icolor" = "image" ]; then
-	convert \( $tmpA1 -colorspace gray \) $tmpA2 \
-		-clut $tmpA1 +swap -compose copy_opacity -composite \
+	convert \( $tmpA1 $setcspace -colorspace gray \) $tmpA2 \
+		-interpolate nearest-neighbor -clut $tmpA1 +swap -compose copy_opacity -composite \
 		$ecolorize -alpha off $addalpha $outfile
 elif [ "$ecolor" = "image" ]; then
-	convert \( $tmpA1 -colorspace gray \) \( $tmpA2 -negate \) \
-		-clut $tmpA1 +swap -compose copy_opacity -composite \
+	convert \( $tmpA1 $setcspace -colorspace gray \) \( $tmpA2 -negate \) \
+		-interpolate nearest-neighbor -clut $tmpA1 +swap -compose copy_opacity -composite \
 		$icolorize -alpha off $addalpha $outfile
 fi
 

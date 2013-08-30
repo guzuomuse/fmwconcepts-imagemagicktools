@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 6/25/2009 .......... revised 6/25/2009
+# Developed by Fred Weinhaus 6/25/2009 .......... revised 6/3/2013
 #
 # USAGE: bcmatch [-c colormode] [-s satmode] infile1 infile2 outfile
 # USAGE: bcmatch [-h or -help]
@@ -58,7 +58,7 @@
 # Brightness uses statistics from the brightness channel of -colorspace HSB.
 # Average uses statistics from the first channel of -colorspace OHTA.
 # Magnitude uses aggregate statistics from all the channels.
-# RGB uses statistics independently from each channel of -colorspace RGB.
+# RGB uses statistics independently from each channel of -colorspace sRGB/RGB.
 # See definitions at: 
 # http://www.imagemagick.org/script/command-line-options.php#colorspace
 # 
@@ -232,7 +232,7 @@ fi
 # test for minimum IM version required
 # IM 6.4.8.9 or higher to conform to -function polynomial
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06040809" ] && errMsg "--- REQUIRES IM VERSION 6.4.6-9 OR HIGHER ---"
 
 
@@ -274,10 +274,12 @@ convert -quiet -regard-warnings "$infile2" +repage "$tmpA2" ||
 	errMsg "--- FILE $infil2 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 
+# NO LONGER USED
+: <<COMMENT
 # extract alpha channel if exists
 alpha=`convert $tmpA2 -format "%A" info:`
 if [ "$alpha" = "True" ]; then
-	convert $tmpA2 -channel A -separate $tmpOA2
+	convert $tmpA2 -alpha extract $tmpOA2
 fi
 #echo "alpha=$alpha"
 
@@ -295,6 +297,39 @@ else
 	reduction=""
 fi
 #echo "type2=$type2; reduction=$reduction"
+COMMENT
+reduction=""
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using autolevel.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
 
 # test if infiles are grayscale
 gray1="no"
@@ -310,48 +345,48 @@ typegray2=`convert $tmpA2 -format '%r' info: | grep 'Gray'`
 # convert infile1 to colormode if not already gray
 if [ "$gray1" = "no" ]; then
 	if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
-		convert $tmpA1 -colorspace Gray $tmpIA1
+		convert $tmpA1 $setcspace -colorspace Gray $tmpIA1
 	elif [ "$colormode" = "luminance" ]; then
-		convert $tmpA1 -colorspace Rec709Luma $tmpIA1
+		convert $tmpA1 $setcspace -colorspace Rec709Luma $tmpIA1
 	elif [ "$colormode" = "lightness" ]; then
-		convert $tmpA1 -colorspace HSL -channel B -separate $tmpIA1
+		convert $tmpA1 $setcspace -colorspace HSL -channel B -separate $tmpIA1
 	elif [ "$colormode" = "brightness" ]; then
-		convert $tmpA1 -colorspace HSB -channel B -separate $tmpIA1
+		convert $tmpA1 $setcspace -colorspace HSB -channel B -separate $tmpIA1
 	elif [ "$colormode" = "average" ]; then
-		convert $tmpA1 -colorspace OHTA -channel R -separate $tmpIA1
+		convert $tmpA1 $setcspace -colorspace OHTA -channel R -separate $tmpIA1
 	elif [ "$colormode" = "magnitude" ]; then
-		convert $tmpA1 -colorspace RGB $tmpIA1
+		convert $tmpA1 $tmpIA1
 	elif [ "$colormode" = "rgb" ]; then
-		convert $tmpA1 -colorspace RGB -channel R -separate $tmpRA1
-		convert $tmpA1 -colorspace RGB -channel G -separate $tmpGA1
-		convert $tmpA1 -colorspace RGB -channel B -separate $tmpBA1
+		convert $tmpA1 $setcspace -channel R -separate $tmpRA1
+		convert $tmpA1 $setcspace -channel G -separate $tmpGA1
+		convert $tmpA1 $setcspace -channel B -separate $tmpBA1
 	fi
 	if [ "$satmode" != "" ]; then
-		convert $tmpA1 -colorspace $satmode -channel G -separate $tmpSA1
+		convert $tmpA1 $setcspace -colorspace $satmode -channel G -separate $tmpSA1
 	fi	
 fi
 
 # convert infile2 to colormode if not already gray
 if [ "$gray2" = "no" ]; then
 	if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
-		convert $tmpA2 -colorspace Gray $tmpIA2
+		convert $tmpA2 $setcspace -colorspace Gray $tmpIA2
 	elif [ "$colormode" = "luminance" ]; then
-		convert $tmpA2 -colorspace Rec709Luma $tmpIA2
+		convert $tmpA2 $setcspace -colorspace Rec709Luma $tmpIA2
 	elif [ "$colormode" = "lightness" ]; then
-		convert $tmpA2 -colorspace HSL -channel B -separate $tmpIA2
+		convert $tmpA2 $setcspace -colorspace HSL -channel B -separate $tmpIA2
 	elif [ "$colormode" = "brightness" ]; then
-		convert $tmpA2 -colorspace HSB -channel B -separate $tmpIA2
+		convert $tmpA2 $setcspace -colorspace HSB -channel B -separate $tmpIA2
 	elif [ "$colormode" = "average" ]; then
-		convert $tmpA2 -colorspace OHTA -channel R -separate $tmpIA2
+		convert $tmpA2 $setcspace -colorspace OHTA -channel R -separate $tmpIA2
 	elif [ "$colormode" = "magnitude" ]; then
-		convert $tmpA2 -colorspace RGB $tmpIA2
+		convert $tmpA2 $tmpIA2
 	elif [ "$colormode" = "rgb" ]; then
-		convert $tmpA2 -colorspace RGB -channel R -separate $tmpRA2
-		convert $tmpA2 -colorspace RGB -channel G -separate $tmpGA2
-		convert $tmpA2 -colorspace RGB -channel B -separate $tmpBA2
+		convert $tmpA2 $setcspace -channel R -separate $tmpRA2
+		convert $tmpA2 $setcspace -channel G -separate $tmpGA2
+		convert $tmpA2 $setcspace -channel B -separate $tmpBA2
 	fi
 	if [ "$satmode" != "" ]; then
-		convert $tmpA2 -colorspace $satmode -channel G -separate $tmpSA2
+		convert $tmpA2 $setcspace -colorspace $satmode -channel G -separate $tmpSA2
 	fi	
 fi	
 
@@ -375,7 +410,7 @@ else
 	convert $tmpGA2 -function polynomial "$a,$b" $tmpGA2
 	getSlopeIntercept "$tmpBA1" "$tmpBA2"
 	convert $tmpBA2 -function polynomial "$a,$b" $tmpBA2
-	convert $tmpRA2 $tmpGA2 $tmpBA2 -combine $reduction $tmpA2
+	convert $tmpRA2 $tmpGA2 $tmpBA2 -combine -colorspace $cspace $reduction $tmpA2
 fi
 
 if [ "$satmode" != "" ]; then

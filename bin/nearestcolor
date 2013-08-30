@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/2/2009 .......... revised 4/8/2009
+# Developed by Fred Weinhaus 4/2/2009 .......... revised 11/28/2011
 #
 # USAGE: nearestcolor [-c color] [-m mode] [-f fontname] [-p pointsize] [-l labelcolor] infile [outfile]
 # USAGE: nearestcolor [-h or -help]
@@ -216,10 +216,10 @@ fi
 # test for minimum IM version required
 # IM 6.5.0.10 or higher to conform to new image matching via compare function
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -lt "06050010" ]; then
 	errMsg "--- REQUIRES IM VERSION 6.5.0-10 OR HIGHER ---"
-elif [ "$im_version" -ge "060501010" ]; then
+elif [ "$im_version" -ge "06050101" ]; then
 	thresh="-dissimilarity-threshold 100%"
 else
 	thresh="-fuzz 1000000%"

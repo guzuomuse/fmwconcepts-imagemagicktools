@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 9/25/2007 .......... revised 6/25/2009
+# Developed by Fred Weinhaus 9/25/2007 .......... revised 6/13/2013
 #
 # USAGE: profile [-r row] [-c col] [-w width] [-l label] [-f format] infile [outfile]
 # USAGE: profile [-h or -help]
@@ -113,9 +113,9 @@ checkMinus()
 function imagestats
 	{
 	data=`convert $1 -verbose info:`
-	min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$min" = "" ] && errMsg "--- MIN NOT FOUND --- "
-	max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$max" = "" ] && errMsg "--- MAX NOT FOUND --- "
 	}
 #
@@ -219,11 +219,11 @@ fi
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/profile_$$.mpc"
 tmpB="$dir/profile_$$.cache"
-tmp0="$dir/profile_0_$$.png"
-tmp1="$dir/profile_1_$$.png"
-tmp2="$dir/profile_2_$$.png"
-tmp3="$dir/profile_3_$$.png"
-tmp4="$dir/profile_4_$$.png"
+tmp0="$dir/profile_0_$$.miff"
+tmp1="$dir/profile_1_$$.miff"
+tmp2="$dir/profile_2_$$.miff"
+tmp3="$dir/profile_3_$$.miff"
+tmp4="$dir/profile_4_$$.miff"
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3 $tmp4; exit 0" 0
 trap "rm -f $tmpA $tmpB $tmp0 $tmp1 $tmp2 $tmp3 $tmp4; exit 1" 1 2 3 15
 
@@ -235,9 +235,13 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 		data=`identify -verbose $tmpA`
 		colorspace=`echo "$data" | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
 		type=`echo "$data" | sed -n 's/^.*Type: \([^ ]*\).*$/\1/p'`
-		[ "$colorspace" = "RGB" -a "$type" = "Grayscale" ] && colorspace="Gray"
-		[ "$colorspace" = "RGB" -a "$type" = "Bilevel" ] && colorspace="Gray"
-		
+		colormode=$colorspace
+		if [ "$colorspace" = "Gray" -o "$type" = "Grayscale" -o "$type" = "Bilevel" ]; then
+			colormode="Gray"
+		else 
+			colormode="RGB"
+		fi
+				
 		# get image width and height
 		imgwidth=`identify -format %w $tmpA`
 		imgheight=`identify -format %h $tmpA`
@@ -267,6 +271,7 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 
 : '
 echo "colorspace=$colorspace"
+echo "colormode=$colormode"
 echo "size=$size"
 echo "offset=$offset"
 echo "rot=$rot"
@@ -282,12 +287,38 @@ echo "width=$width"
 		width20=`expr $width + 20`
 		height10=`expr $height + 10`
 
-		if [ "$colorspace" = "RGB" ]
+
+		# get im_version
+		im_version=`convert -list configure | \
+			sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+		
+		# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+		# though probably not resolved until the latter
+		# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+		# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+		# though probably not resolved until the latter
+		# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+		# but we need to use -set colorspace RGB before using them at appropriate times
+		# so that results stay as in original script
+		# The following was determined from various version tests using pagepeel.
+		# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+		if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+			setcspace="-set colorspace RGB"
+		else
+			setcspace=""
+		fi
+		# no need for setcspace for grayscale or channels after 6.8.5.4
+		if [ "$im_version" -gt "06080504" ]; then
+			setcspace=""
+		fi
+
+
+		if [ "$colormode" = "RGB" ]
 			then
-			convert $tmpA[$size+$offset] $rot $shrink -channel R -separate $tmp0
-			convert $tmpA[$size+$offset] $rot $shrink -channel G -separate $tmp1
-			convert $tmpA[$size+$offset] $rot $shrink -channel B -separate $tmp2
-		elif [ "$colorspace" = "Gray" ]
+			convert $tmpA[$size+$offset] $rot $shrink $setcspace -channel R -separate $tmp0
+			convert $tmpA[$size+$offset] $rot $shrink $setcspace -channel G -separate $tmp1
+			convert $tmpA[$size+$offset] $rot $shrink $setcspace -channel B -separate $tmp2
+		elif [ "$colormode" = "Gray" ]
 			then
 			convert $tmpA[$size+$offset] $rot $shrink $tmp0
 		else 
@@ -319,7 +350,7 @@ profile()
 
 	# draw graph of point pairs
 	im_version=`convert -list configure | \
-		sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+		sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 	if [ $width -le 300 -o "$im_version" -ge "06030600" ]
 		then 
 		convert -size ${width}x${height} xc: \
@@ -355,13 +386,15 @@ profile()
 	fi
 	}
 
+
+
 # process the profile
 
 echo ""
 echo "Please Wait - This May Take Some Time"
 
 
-if [ "$colorspace" = "RGB" -a $format -eq 3 ]
+if [ "$colormode" = "RGB" -a $format -eq 3 ]
 	then
 	echo ""
 	echo "Processing Red"
@@ -400,7 +433,7 @@ if [ "$colorspace" = "RGB" -a $format -eq 3 ]
 	convert $tmp0 $tmp1 $tmp2 -append $tmp4
 	[ "$label" = "on" ] && montage -label "Profile\n${width}x${height}\n\n$line $lineval" -geometry +0+0 $tmp4 $tmp4
 
-elif [ "$colorspace" = "RGB" -a $format -eq 1 ]
+elif [ "$colormode" = "RGB" -a $format -eq 1 ]
 	then
 	echo ""
 	echo "Processing Red"
@@ -439,7 +472,7 @@ elif [ "$colorspace" = "RGB" -a $format -eq 1 ]
 		"Red:\nmin=$minr\nmax=$maxr\n\nGreen:\nmin=$ming\nmax=$maxg\n\nBlue:\nmin=$minb\nmax=$maxb\n\nProfile\n${width}x${height}\n\n$line $lineval" \
 		-geometry +0+0 $tmp4 $tmp4
 
-elif [ "$colorspace" = "Gray" ]
+elif [ "$colormode" = "Gray" ]
 	then
 	echo ""
 	echo "Processing Grayscale"
@@ -458,6 +491,7 @@ elif [ "$colorspace" = "Gray" ]
 else
 	errMsg "--- INVALID COLORSPACE ---"
 fi
+
 convert $tmp4 $outfile
 
 echo ""

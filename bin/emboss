@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/7/2010 .......... revised 5/2/2010
+# Developed by Fred Weinhaus 4/7/2010 .......... revised 6/4/2013
 # 
 # USAGE: emboss [-m method] [-a azimuth] [-e elevation] [-d depth] [-i intensity] [-c compose] [-g gray] infile outfile
 # USAGE: emboss [-h or -help]
@@ -266,13 +266,36 @@ tmpB2="$dir/emboss_2_$$.cache"
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 1" 1 2 3 15
 
-# read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
-	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
-
 # get IM version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using emboss.
+# with IM 6.6.0.10, 6.7.2.0, 6.7.4.10, 6.7.6.8, 6.7.6.9, 6.7.6.10, 6.7.8.7
+# Note: added $setcspace when reading input
+# Note: bugs for method=2 sometime after IM 6.7.4.0 through 6.7.6.8, which I cannot seem to fix
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+
+# read the input image and filter image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" +repage $setcspace "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 # set up for gray adjustment
 if [ "$gray" = "" ]; then
@@ -306,7 +329,7 @@ elif [ $method -eq 2 ]; then
 	convert \( $tmpA1 -colorspace gray \) \( -clone 0 -negate \) \
 		\( -clone 0 -distort SRT "0,0 1 0 $xdist2,$ydist2" \) \
 		\( -clone 1 -distort SRT "0,0 1 0 $xdist1,$ydist1" \) \
-		-delete 0,1 -compose blend -set option:compose:args 50 -composite \
+		-delete 0,1 -define compose:args=50 -compose blend -composite \
 		$levelize $tmpA2
 fi
 

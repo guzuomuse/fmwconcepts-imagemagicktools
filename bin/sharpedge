@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 3/21/2008 .......... revised 6/27/2008
+# Developed by Fred Weinhaus 3/21/2008 .......... revised 5/8/2012
 # 
 # USAGE: sharpedge [-k kind] [-w width] [-f factor] [-e edge] [-t threshold] [-b blur] infile outfile
 # USAGE: sharpedge [-st] infile
@@ -270,13 +270,13 @@ trap "rm -f $tmpA $tmpB $tmpM $tmpS $tmp0 $tmp1; exit 1" 1 2 3 15
 function imagestats
 	{
 	data=`convert \( $1 -colorspace Gray \) -verbose info:`
-	min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$min" = "" ] && errMsg "--- MIN NOT FOUND --- "
-	max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$max" = "" ] && errMsg "--- MAX NOT FOUND --- "
-	mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$mean" = "" ] && errMsg "--- MEAN NOT FOUND --- "
-	std=`echo "$data" | sed -n '/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	std=`echo "$data" | sed -n 's/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$std" = "" ] && errMsg "--- STD NOT FOUND --- "
 	#
 	# express as percent
@@ -320,11 +320,11 @@ imagestats $tmpA
 if [ "$kind" = "uniform" ]
 	then
 echo "uniform"
-	mean="-convolve $ave"
+	mean="-define convolve:scale=\! -convolve $ave"
 elif [ "$kind" = "binomial" ]
 	then
 echo "binomial"
-	mean="-convolve $bin3"
+	mean="-define convolve:scale=\! -convolve $bin3"
 elif [ "$kind" = "gaussian" ]
 	then
 echo "gaussian"

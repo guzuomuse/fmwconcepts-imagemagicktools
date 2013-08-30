@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/29/2009 .......... revised 6/9/2009
+# Developed by Fred Weinhaus 5/29/2009 .......... revised 6/15/2013
 #
 # USAGE: whiteboard  [-c coords] [-a aspect ] [-m magnify] [-d dimensions] [-e enhance ] [-f filtersize] [-o offset] [-t threshold]  [-s sharpen] [-S saturation] [-w whitecolor] infile outfile
 # USAGE: whiteboard [-help]
@@ -13,7 +13,8 @@
 #                           four corners of the input image.
 # -a      aspect            width-to-height aspect ratio of actual whiteboard; 
 #                           typical aspect ratios are: 2 (2:1), 1.5 (3:2) and 
-#                           1.33 (4:3); floats>0; The default=1
+#                           1.33 (4:3); floats>0; The default is computed 
+#                           automatically
 # -m      magnify           ouptut image magnification (or minification) factor 
 #                           applied to automatically computed dimensions; float>0; 
 #                           values>1 are magnify; values<1 are minify; 
@@ -62,7 +63,7 @@
 # 
 # -a aspect ... ASPECT is the width-to-height aspect ratio of actual whiteboard. 
 # Typical values are: 2 (2:1), 1.5 (3:2) and 1.33 (4:3). Values are floats>0. 
-# The default is 1.
+# The default is computed automatically.
 # 
 # -m magnify ... MAGNIFY is the output image magnification (or minification) factor 
 # Values are floats>0. Values larger than 1 will magnify. Values less than 1 will 
@@ -121,6 +122,11 @@
 #
 # Thanks to Jens Mueller for suggesting this function and supplying references to examples.
 # 
+# REFERENCES:
+# http://www.sagenb.org/home/pub/704/
+# http://research.microsoft.com/users/zhang/Papers/WhiteboardRectification.pdf
+# http://research.microsoft.com/en-us/um/people/zhang/papers/tr03-39.pdf
+# 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
 # foolproof. Use At Your Own Risk. 
@@ -130,7 +136,7 @@
 
 # set default values
 coords=""			# 4 pairs of x,y coordinates
-aspect=1			# typical width-to-height ratios of 2, 1.5 or 1.33
+aspect=""			# typical width-to-height ratios of 1, 2, 1.5 or 1.33
 magnify=1			# magnification of image size from computed dimensions
 dimensions=""		# output image dimension(s)
 enhance="none"		# none, stretch, normalize
@@ -196,15 +202,13 @@ getChannelMean()
 	{
 	img="$1"
 	# get im version
-	im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 	if [ "$im_version" -ge "06030901" ]
 		then 
 		mean=`convert $img -format "%[mean]" info:`
 		mean=`convert xc: -format "%[fx:100*$mean/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-		mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		mean=`convert xc: -format "%[fx:100*$mean]" info:`
 	fi
 	}
@@ -231,18 +235,15 @@ whiteBalance()
 	# get image size
 	ww=`convert $img -format "%w" info:`
 	hh=`convert $img -format "%h" info:`
-	# get im version
-	im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 	# separate channels
-	convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
-	convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
-	convert $tmpA1 -colorspace RGB -channel B -separate $tmpB1
+	convert $tmpA1 $setcspace -channel R -separate $tmpR1
+	convert $tmpA1 $setcspace -channel G -separate $tmpG1
+	convert $tmpA1 $setcspace -channel B -separate $tmpB1
 	# get mask of top percent closest to white
 	# approximation using negated saturation and brightness channels multiplied
-	convert $tmpA1 -colorspace HSB -channel G -negate -channel GB -separate \
+	convert $tmpA1 $setcspace -colorspace HSB -channel G -negate -channel GB -separate \
 		-compose multiply -composite +channel \
-		-contrast-stretch 0,${percent}% -fill black +opaque white \
+		$setcspace -contrast-stretch 0,${percent}% -fill black +opaque white \
 		$tmpM1
 	# get mean of mask
 	getChannelMean "$tmpM1"
@@ -432,9 +433,44 @@ tmpB2="$dir/autowhite_B_$$.cache"
 trap "rm -f $tmpA1 $tmpA2 $tmpM1 $tmpM2 $tmpT1 $tmpT2 $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB2; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmpM1 $tmpM2 $tmpT1 $tmpT2 $tmpR1 $tmpR2 $tmpG1 $tmpG2 $tmpB1 $tmpB2; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using whiteboard
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.1
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+
 # read the input image into the TMP cached image.
 convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 	errMsg "--- FILE $infile NOT READABLE OR HAS ZERO SIZE ---"
+
+# get im_version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# get input image size and center
+w=`convert -ping $tmpA1 -format "%w" info:`
+h=`convert -ping $tmpA1 -format "%h" info:`
+cx=`convert xc: -format "%[fx:$w/2]" info:`
+cy=`convert xc: -format "%[fx:$h/2]" info:`
 
 if [ "$coords" != "" ]; then
 	# separate input coords
@@ -474,6 +510,41 @@ if [ "$coords" != "" ]; then
 	x4=`echo "${pArray[3]}," | cut -d, -f1`
 	y4=`echo "${pArray[3]}," | cut -d, -f2`
 	
+	# compute the aspect ratio if not provided
+	if [ "$aspect" = "" ]; then
+		m1x=$x4
+		m1y=$y4
+		m2x=$x3
+		m2y=$y3
+		m3x=$x1
+		m3y=$y1
+		m4x=$x2
+		m4y=$y2
+		# get centroid of quadrilateral
+		ccx=`convert xc: -format "%[fx:($m1x+$m2x+$m3x+$m4x)/4]" info:`
+		ccy=`convert xc: -format "%[fx:($m1y+$m2y+$m3y+$m4y)/4]" info:`
+		# convert to proper x,y coordinates relative to center
+		m1x=`convert xc: -format "%[fx:$m1x-$ccx]" info:`
+		m1y=`convert xc: -format "%[fx:$ccy-$m1y]" info:`
+		m2x=`convert xc: -format "%[fx:$m2x-$ccx]" info:`
+		m2y=`convert xc: -format "%[fx:$ccy-$m2y]" info:`
+		m3x=`convert xc: -format "%[fx:$m3x-$ccx]" info:`
+		m3y=`convert xc: -format "%[fx:$ccy-$m3y]" info:`
+		m4x=`convert xc: -format "%[fx:$m4x-$ccx]" info:`
+		m4y=`convert xc: -format "%[fx:$ccy-$m4y]" info:`
+		#simplified equations, assuming u0=0, v0=0, s=1
+		k2=`echo "scale=5; (($m1y - $m4y)*$m3x - ($m1x - $m4x)*$m3y + $m1x*$m4y - $m1y*$m4x)/(($m2y- $m4y)*$m3x - ($m2x - $m4x)*$m3y + $m2x*$m4y - $m2y*$m4x)" | bc`
+		k3=`echo "scale=5; (($m1y - $m4y)*$m2x - ($m1x - $m4x)*$m2y + $m1x*$m4y - $m1y*$m4x)/(($m3y- $m4y)*$m2x - ($m3x - $m4x)*$m2y + $m3x*$m4y - $m3y*$m4x)" | bc`
+		ff=`echo "scale=5; (($k3*$m3y - $m1y)*($k2*$m2y - $m1y) + ($k3*$m3x - $m1x)*($k2*$m2x- $m1x))/(($k3 - 1)*($k2 - 1))" | bc`
+		if [ "$ff" = "" ]; then
+			errMsg "--- ASPECT RATIO CANNOT BE DETERMINED ---"
+		else
+			# sqrt( $ff*$ff) = abs($ff)
+			f=`echo "scale=5; sqrt( sqrt( $ff*$ff) )" | bc`
+			aspect=`echo "scale=5; sqrt((($k2 - 1)^2 + ($k2*$m2y - $m1y)^2/$f^2 + ($k2*$m2x - $m1x)^2/$f^2)/(($k3 - 1)^2 + ($k3*$m3y - $m1y)^2/$f^2 + ($k3*$m3x - $m1x)^2/$f^2))" | bc`
+		fi
+	fi
+
 	if [ "$dimensions" != "" -a "$ww" = "" -a "$hh" != "" ]; then
 		# compute output size from aspect ratio and hh
 		height=$hh
@@ -508,10 +579,6 @@ if [ "$coords" != "" ]; then
 else
 	if [ "$dimensions" != "" -a "$ww" = "" -a "$hh" != "" ]; then
 		# compute output size from aspect ratio and hh
-		w=`convert $tmpA1 -ping -format "%w" info:`
-		h=`convert $tmpA1 -ping -format "%h" info:`
-		cx=`convert xc: -format "%[fx:$w/2]" info:`
-		cy=`convert xc: -format "%[fx:$h/2]" info:`
 		aspect=`convert xc: -format "%[fx:$w/$h]" info:`
 		height=$hh
 		width=`convert xc: -format "%[fx:$height*$aspect]" info:`
@@ -519,10 +586,6 @@ else
 		magy=`convert xc: -format "%[fx:$height/$h]" info:`
 	elif [ "$dimensions" != "" -a "$ww" != "" -a "$hh" = "" ]; then
 		# compute output size from aspect ratio and ww
-		w=`convert $tmpA1 -ping -format "%w" info:`
-		h=`convert $tmpA1 -ping -format "%h" info:`
-		cx=`convert xc: -format "%[fx:$w/2]" info:`
-		cy=`convert xc: -format "%[fx:$h/2]" info:`
 		aspect=`convert xc: -format "%[fx:$w/$h]" info:`
 		width=$ww
 		height=`convert xc: -format "%[fx:$width/$aspect]" info:`
@@ -530,23 +593,19 @@ else
 		magy=`convert xc: -format "%[fx:$height/$h]" info:`
 	elif [ "$dimensions" != "" -a "$ww" != "" -a "$hh" != "" ]; then
 		# output size is ww x hh
-		w=`convert $tmpA1 -ping -format "%w" info:`
-		h=`convert $tmpA1 -ping -format "%h" info:`
-		cx=`convert xc: -format "%[fx:$w/2]" info:`
-		cy=`convert xc: -format "%[fx:$h/2]" info:`
 		width=$ww
 		height=$hh
 		magx=`convert xc: -format "%[fx:$width/$w]" info:`
 		magy=`convert xc: -format "%[fx:$height/$h]" info:`
 	else
 		# use image width and height multiplied by magnify
-		width=`convert $tmpA1 -ping -format "%[fx:$magnify*w]" info:`
-		height=`convert $tmpA1 -ping -format "%[fx:$magnify*h]" info:`
+		width=`convert xc: -format "%[fx:$magnify*$w]" info:`
+		height=`convert xc: -format "%[fx:$magnify*$h]" info:`
 	fi
 
 	# compute offsets for virtual canvas
-	delx=`convert $tmpA1 -ping -format "%[fx:(w-$width)/2]" info:`
-	dely=`convert $tmpA1 -ping -format "%[fx:(h-$height)/2]" info:`
+	delx=`convert xc: -format "%[fx:($w-$width)/2]" info:`
+	dely=`convert xc: -format "%[fx:($h-$height)/2]" info:`
 	signx=`convert xc: -format "%[fx:sign($delx)]" info:`
 	signy=`convert xc: -format "%[fx:sign($dely)]" info:`
 	[ "$signx" = "-1" ] && delx="$delx" || delx="+$delx"
@@ -577,36 +636,36 @@ fi
 
 # do enhance
 if [ "$enhance" = "stretch" ]; then
-	convert $tmpA1 -contrast-stretch 0 $tmpA1
+	convert $tmpA1 $setcspace -contrast-stretch 0 $tmpA1
 elif [ "$enhance" = "whitebalance" ]; then
 	whiteBalance "$tmpA1"
 elif [ "$enhance" = "both" ]; then
-	convert $tmpA1 -contrast-stretch 0 $tmpA1	
+	convert $tmpA1 $setcspace -contrast-stretch 0 $tmpA1	
 	whiteBalance "$tmpA1"
 fi
 
 # process image
 if [ "$coords" = "" -a "$magnify" = "1" -a "$dimensions" = "" ]; then
 	convert \( $tmpA1 \) \
-		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% -contrast-stretch 0 $blurring \) \
+		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% $setcspace -contrast-stretch 0 $blurring \) \
 		-compose copy_opacity -composite -fill "$wcolor" -opaque none +matte \
 		$sharpening $modulation \
 		$outfile
 elif [ "$coords" = "" -a "$magnify" != "1" ]; then
 	convert \( $tmpA1 -virtual-pixel white -set option:distort:viewport ${width}x${height}${delx}${dely} -distort SRT "$magnify 0" \) \
-		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% -contrast-stretch 0 $blurring \) \
+		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% $setcspace -contrast-stretch 0 $blurring \) \
 		-compose copy_opacity -composite -fill "$wcolor" -opaque none +matte \
 		$sharpening $modulation \
 		$outfile
 elif [ "$coords" = "" -a "$dimensions" != "" ]; then
 	convert \( $tmpA1 -virtual-pixel white -set option:distort:viewport ${width}x${height}${delx}${dely} -distort SRT "$cx,$cy $magx,$magy 0" \) \
-		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% -contrast-stretch 0 $blurring \) \
+		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% $setcspace -contrast-stretch 0 $blurring \) \
 		-compose copy_opacity -composite -fill "$wcolor" -opaque none +matte \
 		$sharpening $modulation \
 		$outfile
 elif [ "$coords" != "" ]; then
 	convert \( $tmpA1 -virtual-pixel white -set option:distort:viewport ${width}x${height}+0+0 -distort perspective "$coords" \) \
-		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% -contrast-stretch 0 $blurring \) \
+		\( -clone 0 -colorspace gray -negate -lat ${filtersize}x${filtersize}+${offset}% $setcspace -contrast-stretch 0 $blurring \) \
 		-compose copy_opacity -composite -fill "$wcolor" -opaque none +matte \
 		$sharpening $modulation \
 		$outfile

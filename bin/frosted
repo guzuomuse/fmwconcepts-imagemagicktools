@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/13/2009 .......... revised 7/13/2009
+# Developed by Fred Weinhaus 7/13/2009 .......... revised 6/6/2013
 #
 # USAGE: frosted [-s spread] [-b bluramt] [-r reseed] infile outfile
 # USAGE: frosted [-h or -help]
 #
 # OPTIONS:
 #
-# -s      spread             spread distance of dispersion; integer>0; default=5
+# -s      spread             spread distance of dispersion; integer>=0; default=5
 # -b      bluramt            amount to blur image before dispersion; integer>=0; default=5
 # -r      reseed             forced seed value; integer>0; default will randomly change seed
 #
@@ -22,7 +22,7 @@
 # 
 # OPTIONS: 
 # 
-# -s spread ... SPREAD distance of dispersion. Values are integers>0.
+# -s spread ... SPREAD distance of dispersion. Values are integers>=0.
 # Typical values range from 2 to 20. The default=5
 #
 # -b bluramt ... BLURAMT is the amount of blurring of the image in pixels 
@@ -113,8 +113,8 @@ else
 					   checkMinus "$1"
 					   spread=`expr "$1" : '\([0-9]*\)'`
 					   [ "$spread" = "" ] && errMsg "SPREAD=$spread MUST BE AN INTEGER"
-		   			   spreadtest=`echo "$spread < 1" | bc`
-					   [ $spreadtest -eq 1 ] && errMsg "--- SPREAD=$spread MUST BE A POSITIVE INTEGER ---"
+#		   			   spreadtest=`echo "$spread < 1" | bc`
+#					   [ $spreadtest -eq 1 ] && errMsg "--- SPREAD=$spread MUST BE A POSITIVE INTEGER ---"
 					   ;;
 				-b)    # get bluramt
 					   shift  # to get the next parameter - bluramt
@@ -163,6 +163,31 @@ tmp0="$dir/frosted_0_$$.miff"
 trap "rm -f $tmpA1 $tmpA2 $tmp0; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2 $tmp0; exit 1" 1 2 3 15
 
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using frosted.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.7
+# NOTE: IM 6.7.7.8 and 6.7.7.9 do not seem to work properly
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
 
 # read the input images into the temp files and test validity.
 if [ "$bluramt" != "0" -a "$bluramt" != "0.0" ]; then
@@ -185,15 +210,10 @@ else
 fi
 
 
-# get im version
-im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
-
-
 # create noise image
 convert -size ${ww}x${hh} xc: $seed +noise Random \
 	-virtual-pixel tile \
-	-colorspace gray -contrast-stretch 0% \
+	$setcspace -colorspace gray -contrast-stretch 0% \
     $tmp0
 
 
@@ -203,15 +223,25 @@ if [ "$im_version" -ge "06040805" ]; then
 	convert $tmp0 \
 		-channel R -evaluate sine $density \
 		-channel G -evaluate cosine $density \
-		-channel RG -separate $tmpA1 +swap miff:- | \
-		composite - -displace ${spread}x${spread} $outfile
+		-channel RG -separate $tmpA1 -insert 0 miff:- | \
+		convert - $setcspace -define compose:args=${spread}x${spread} -compose displace -composite $outfile
+
+# old last lines
+#		-channel RG -separate $tmpA1 +swap miff:- | \
+#		composite - -displace ${spread}x${spread} $outfile
+
 elif [ "$im_version" -ge "06040400" ]; then
 	# use -fx to create multi-image miff (sine tmpA1 cosine), then pass to composite -displace
 	convert $tmp0 \
 		-channel R -monitor -fx "0.5+0.5*sin(2*pi*u*$density)" \
 		-channel G -monitor -fx "0.5+0.5*cos(2*pi*u*$density)" \
-		-channel RG -separate $tmpA1 +swap miff:- | \
-		composite - -displace ${spread}x${spread} $outfile
+		-channel RG -separate $tmpA1 -insert 0 miff:- | \
+		convert - $setcspace -define compose:args=${spread}x${spread} -compose displace -composite $outfile
+
+# old last lines
+#		-channel RG -separate $tmpA1 +swap miff:- | \
+#		composite - -displace ${spread}x${spread} $outfile
+
 else
 	convert $tmpA1 $tmp0 -monitor \
 		-fx "xx=i+$spread*sin($density*v*2*pi); yy=j+$spread*cos($density*v*2*pi); u.p{xx,yy}" \

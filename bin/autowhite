@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/13/2008 .......... revised 5/31/2010
+# Developed by Fred Weinhaus 10/13/2008 .......... revised 6/1/2013
 #
 # USAGE: autowhite [-m method] [-p percent] infile outfile
 # USAGE: autowhite [-help]
@@ -40,7 +40,7 @@
 # -p percent ... PERCENT is the percentage of pixels closest in color 
 # to white that is used to compute the average graylevel of each RGB 
 # channel in the image. Values are floats between 0 and 100. Default=1
-# 
+#
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
 # foolproof. Use At Your Own Risk. 
@@ -178,20 +178,57 @@ else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAG ZERO SIZE ---"
 fi
 
+# get im version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
 
 #get image size
 ww=`convert $tmpA1 -format "%w" info:`
 hh=`convert $tmpA1 -format "%h" info:`
 
-# convert image to RGB
-convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
-convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
-convert $tmpA1 -colorspace RGB -channel B -separate $tmpB1
+
+# get colorspace
+# colorspace swapped at IM 6.7.5.5, but not properly fixed until 6.7.6.6
+# before swap verbose info reported colorspace=RGB after colorspace=sRGB
+# not all formats report grayscale for colorspace (gif, tiff, jpg do not), but type will be grayscale
+colorspace=`identify -ping -verbose $tmpA1 | sed -n 's/^.*Colorspace: \([^ ]*\).*$/\1/p'`
+if [ "$colorspace" != "RGB" -a "$colorspace" != "sRGB" ]; then
+	errMsg "--- FILE $infile MUST BE RGB, sRGB ---"
+fi
 
 
-# get im version
-im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using autolevel.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
+#assume an RGB/sRGB input image colorspace
+convert $tmpA1 $setcspace -channel R -separate $tmpR1
+convert $tmpA1 $setcspace -channel G -separate $tmpG1
+convert $tmpA1 $setcspace -channel B -separate $tmpB1
+
 
 
 getChannelMean()
@@ -203,7 +240,7 @@ getChannelMean()
 		mean=`convert xc: -format "%[fx:100*$mean/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-		mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		mean=`convert xc: -format "%[fx:100*$mean]" info:`
 	fi
 	}
@@ -233,7 +270,7 @@ fi
 
 # get mask of top percent closest to white
 # approximation using negated saturation and brightness channels multiplied
-convert $tmpA1 -colorspace HSB -channel G -negate -channel GB -separate \
+convert $tmpA1 $setcspace -colorspace HSB -channel G -negate -channel GB -separate +channel \
 	-compose multiply -composite +channel \
 	-contrast-stretch 0,${percent}% -fill black +opaque white \
 	$tmpM1
@@ -266,7 +303,7 @@ bluediff=$diff
 [ $method -eq 2 ] && convert $tmpB1 -evaluate add $diff% $tmpB1
 
 if [ $method -eq 2 ]; then
-	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
+	convert $tmpR1 $tmpG1 $tmpB1 -combine -colorspace $cspace $outfile
 elif [ $method -eq 1 ]; then
 	convert $tmpA1 $process "$redratio 0 0 0 $greenratio 0 0 0 $blueratio" $outfile
 fi

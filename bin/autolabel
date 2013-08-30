@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/12/2009 .......... revised 8/19/2010
+# Developed by Fred Weinhaus 12/12/2009 .......... revised 11/26/2011
 # 
 # USAGE: autolabel -s size -t text [-m mode] [-b buffer] [-p pointsize] [-f font] [-r rcolor] [-c color] [-u undercolor] infile outfile
 # USAGE: autolabel [-h or -help]
@@ -269,9 +269,6 @@ fi
 [ "$size" = "" -a "$pointsize" = "" ] && errMsg "--- TEXTBOX WIDTH AND/OR HEIGHT MUST BE SPECIFIED ---"
 
 
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
-
 # setup temp files
 tmpA1="$dir/autolabel_1_$$.mpc"
 tmpB1="$dir/autolabel_1_$$.cache"
@@ -291,7 +288,7 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 # test for minimum IM version required
 # IM 6.5.0.10 or higher to conform to new image matching via compare function
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -lt "06050010" ]; then
 	errMsg "--- REQUIRES IM VERSION 6.5.0-10 OR HIGHER ---"
 fi
@@ -321,6 +318,7 @@ hh=`echo "${size}x" | cut -dx -f2`
 # label can use either size (width or widthx or xheight or widthxheight) or pointsize but not both
 # caption can use widthxheight without pointsize
 # or width (or widthx) with pointsize
+# note caption: determination of pointsize changed at IM 6.7.7-3 according to the changelog for proper wrapping
 if [ "$mode" = "label" -a "$pointsize" != "" -a "$size" = "" ]; then
 	convert -background "$ucolor" -fill "$color" \
 		-font $font -pointsize $pointsize -gravity center \
@@ -349,7 +347,7 @@ elif [ "$mode" = "caption" -a "$pointsize" != "" -a "$ww" != "" -a "$hh" = "" ];
 elif [ "$mode" = "caption" -a "$pointsize" = "" -a "$ww" != "" -a "$hh" != "" ]; then
 	convert -background "$ucolor" -fill "$color" \
 		-font $font -gravity center \
-		-size ${ww}x${hh} ${mode}:"$text" $tmpA2
+		-size ${ww}x${hh} ${mode}:"$text" -write 1tmp1.png $tmpA2
 else
 	echo "--- Invalid Combination Of Pointsize and Size ---"
 fi

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/10/2010 .......... 5/10/2010
+# Developed by Fred Weinhaus 5/10/2010 .......... 1/11/2013
 #
 # USAGE: balance "shadows,midtones,highlights" [-b bias] infile outfile
 # USAGE: balance [-h or -help]
@@ -160,6 +160,8 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 
 # find midpoint
 midx=`convert $tmpA1 -format "%[fx:round(255*(mean+$bias/100))]" info:`
+midx=`convert xc: -format "%[fx: $midx<0?0:$midx]" info:`
+midx=`convert xc: -format "%[fx: $midx>255?255:$midx]" info:`
 midy=`convert xc: -format "%[fx:$midx/255]" info:`
 #echo "midx=$midx; midy=$midy"
 
@@ -170,7 +172,6 @@ values=`echo $values | sed 's/[ ]*//g'`
 vals=`echo $values | cut -d, -f 1`
 valm=`echo $values | cut -d, -f 2`
 valh=`echo $values | cut -d, -f 3`
-echo "$vals, $valm, $valh"
 vals=`convert xc: -format "%[fx:$vals/100]" info:`
 valm=`convert xc: -format "%[fx:$midy+$valm/100]" info:`
 valh=`convert xc: -format "%[fx:1+$valh/100]" info:`

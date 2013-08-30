@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/18/2007 .......... revised 3/11/2010
+# Developed by Fred Weinhaus 8/18/2007 .......... revised 12/21/2012
 #
 # USAGE: 3Drotate option=value infile outfile
 # USAGE: 3Drotate [-h or -help]
@@ -859,7 +859,7 @@ else
 fi
 	
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -lt "06030600" ]
 	then
 	convert $tmpA -virtual-pixel $vp -background $bgcolor \

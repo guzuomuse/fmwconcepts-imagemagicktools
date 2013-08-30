@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/19/2009 .......... revised 1/25/2010
+# Developed by Fred Weinhaus 8/19/2009 .......... revised 10/25/2012
 #
-# USAGE: cepstrum [-s size] [-o overlap] [-r rolloff] [-c constant] infile outfile
+# USAGE: cepstrum [-s size] [-o overlap] [-r rolloff] [-c constant] [-G] infile outfile
 # USAGE: cepstrum [-h or -help]
 #
 # OPTIONS:
@@ -14,6 +14,7 @@
 #                      0<integer<100; default=40
 # -c     constant      constant value used in log operation; integer>0;
 #                      default=10000
+# -G                   create grayscale cepstrum
 # 
 ###
 #
@@ -68,6 +69,9 @@
 # enhancement. Smaller values attenuate noise more than larger values. 
 # Values are integers>0. The default=10000
 # 
+# -G ... Creates GRAYSCALE cepstrum by converting the input image to 
+# grayscale before processing.
+# 
 # REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled 
 # in any quantum level of Q8, Q16 or Q32. Also requires the FFTW delegate 
 # library.
@@ -87,6 +91,7 @@ size=25				# subsection width and height factor (percent) of original
 overlap=50			# percent overlap of subsections
 rolloff=40			# cosine bell rolloff percent: typically 40-50
 constant=10000	 	# constant used in log to control curvature
+grayscale="no"      # create grayscale cepstrum
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -127,6 +132,25 @@ checkMinus()
     [ $test -eq 1 ] && errMsg "$errorMsg"
 	}
 
+# function to get min and max of image
+getMinMax()
+	{
+	img="$1"
+	if [ "$im_version" -ge "06030901" ]
+		then 
+		min=`convert $img -format "%[min]" info:`
+		max=`convert $img -format "%[max]" info:`
+		min=`convert xc: -format "%[fx:100*$min/quantumrange]" info:`
+		max=`convert xc: -format "%[fx:100*$max/quantumrange]" info:`
+	else
+		data=`convert $img -verbose info:`
+		min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
+		max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
+		min=`convert xc: -format "%[fx:100*$min)]" info:`
+		max=`convert xc: -format "%[fx:100*$max)]" info:`
+	fi
+	}
+
 
 # test for correct number of arguments and get values
 if [ $# -eq 0 ]
@@ -135,7 +159,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 10 ]
+elif [ $# -gt 11 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -191,6 +215,9 @@ else
 					   constanttest=`echo "$constant <= 0" | bc`
 					   [ $constanttest -eq 1 ] && errMsg "--- CONSTANT=$constant MUST BE A POSITIVE FLOAT ---"
 					   ;;
+				-G)    # set grayscale mode
+					   grayscale="yes"
+					   ;;
 				 -)    # STDIN and end of arguments
 					   break
 					   ;;
@@ -223,14 +250,41 @@ tmp2="$dir/fftcepstrum_2_$$.pfm"
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmp1 $tmp2; exit 1" 1 2 3 15
 
-# read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
-	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+# get IM version
+im_version=`convert -list configure | \
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using spectrum.
+# Note: tested with 6.7.4.10, 6.7.6.10, 6.7.8.6
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+
+# set grayscale mode
+if [ "$grayscale" = "yes" ]; then
+	gray="$setcspace -colorspace gray"
+else
+	gray=""
+fi
+
+
+# read the input image and filter image into the temp files and test validity.
+convert -quiet -regard-warnings "$infile" $gray +repage -auto-level "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 # test for valid version of IM
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06050407" ] && errMsg "--- REQUIRES IM VERSION 6.5.4-7 OR HIGHER ---"
 
 # test for hdri enabled
@@ -282,18 +336,30 @@ else
 	qmax=`convert xc: -format "%[fx:quantumrange]" info:`
 	gain=`convert xc: -format "%[fx:1/quantumrange]" info:`
 	mult1="-evaluate multiply $qmax"
-	mult2-"-evaluate multiply $gain"
+	mult2="-evaluate multiply $gain"
 fi
 
-# center crop image to min even dimensio: 
+# center crop image to min even dimension: 
 # currently limited to be square even dimensions for fft/ift
 convert $tmpA1 -gravity center -crop ${dmax}x${dmax}+0+0 +repage $tmpA1
+
+# setup autolevel
+if [ "$im_version" -lt "06050501" ]; then
+	getMinMax $dir/tmpA1.mpc
+	proc="-level $min%,$max%"
+else 
+	proc="-auto-level"
+fi
+
+# apply autolevel
+convert $tmpA1 $proc $tmpA1
 
 # create cosine bell 2 mask - actually is a sine window function - see profile from white image
 convert  \
 	\( -size ${sw}x1 xc: -fx "(0.5*cos(pi*max(0,(1-i/$wr)))+0.5)*(0.5*cos(pi*max(0,(1-(w-i)/$wr)))+0.5)" -scale ${sw}x${sh}\! \) \
 	\( -size 1x${sh} xc: -fx "(0.5*cos(pi*max(0,(1-j/$hr)))+0.5)*(0.5*cos(pi*max(0,(1-(h-j)/$hr)))+0.5)" -scale ${sw}x${sh}\! \) \
 	-compose multiply -composite $tmp2
+
 
 # create average of magnitude of subsections
 # compute number of sections
@@ -337,9 +403,9 @@ echo ""
 # take IFT using average as real component and 
 # black image as imaginary component, then 
 # roll the image so that the center is moved to the upper left corner
-convert $tmp1 $mult1 \
+convert \( $tmp1 $mult1 \
 	-evaluate log $constant -negate \
-	$mult2 \
+	$mult2 \) \
 	\( -size ${sw}x${sh} xc:black \) +ift \
 	-roll -${swr}-${shr} $outfile
 

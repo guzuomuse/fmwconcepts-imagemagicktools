@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/18/2007 .......... revised 3/9/2011
+# Developed by Fred Weinhaus 8/18/2007 .......... revised 6/13/2013
 #
-# USAGE: curves [-s xscale,yscale] [-g graphmode] "x1,y1 x2,y2 ..." infile outfile
-# USAGE: curves [-s xscale,yscale] [-g graphmode] -f point_file infile outfile
+# USAGE: curves [-s xscale,yscale] [-c channel] [-g graphmode] "x1,y1 x2,y2 ..." infile outfile
+# USAGE: curves [-s xscale,yscale] [-c channel] [-g graphmode] -f point_file infile outfile
 # USAGE: curves [-h or -help]
 #
 # OPTIONS:
@@ -14,6 +14,9 @@
 #                           y corresponds to the graylevel in the outut image;
 #                           x,y non-negative floats enclosed in quotes;  
 #                           list must be specified just prior to infile
+# -c     channel            channel to process; options are: red, green, blue, 
+#                           lightness, brightness, luma and luminosity; 
+#                           default=all rgb channels
 # -f     point_file         text file containing list of break points;
 #                           one x,y pair per line
 # -s     xscale,yscale      range of values for x,y breakpoint pairs from 0 to xscale,yscale;
@@ -71,6 +74,10 @@
 # # between 0 and 255 and the length of the output image is 256. Equal
 # values for xscale and yscale are not required.
 # 
+# -c channel ... CHANNEL to process. Options are: red, green, blue, lightness 
+# (L from HSL), brightness (B from HSB), luma (Y from YCbCr) and luminosity 
+# (L from Lab). The default=all rgb channels.
+#
 # -g graphmode... enables the creation of a graph of the curved transformation, 
 # which is then displayed automatically. The choices are: curve (C) or 
 # points (P), where the latter shows the original user specified break points 
@@ -78,6 +85,8 @@
 # There is also a default setting below that can be changed to enable this to be 
 # save to a file named outfile_graph.gif. The graph will be scaled to size 100x100. 
 # IMPORTANT: To end the script, close/quit the graph image.
+# 
+# REQUIREMENTS: IM 6.7.8.2 or higher when using channel=luminosity.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, nor that 
 # trapping of inconsistent parameters is complete and foolproof. Use At Your 
@@ -89,6 +98,7 @@
 # set default value for scale and height of lut
 xscale=100
 yscale=100
+channel=""
 height=10
 precision=1				# decimal precision
 pinc=1					# increment in pixels
@@ -96,7 +106,7 @@ graphmode=""            # initialization
 crad=2					# point circle radius
 
 # set flag if graph is permanent (graph=save) or temporary (graph=view)
-graph="save"
+graph="view"
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
@@ -154,7 +164,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 7 ]
+elif [ $# -gt 9 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -179,6 +189,23 @@ else
 						 P)			graphmode="points";;
 						 p)			graphmode="points";;
 						 *)         errMsg="--- UNKNOWN GRAPHMODE ---"
+						esac
+					   ;;
+				-c)    # get  channel
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID CHANNEL SPECIFICATION ---"
+					   checkMinus "$1"
+					   channel=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+						case "$channel" in
+						 red) ;;
+						 green) ;;
+						 blue) ;;
+						 lightness) ;;
+						 brightness) ;;
+						 luma) ;;
+						 luminosity) ;;
+						 *) errMsg="--- UNKNOWN CHANNEL ---"
 						esac
 					   ;;
 				-f)    # text file with point pairs
@@ -478,7 +505,7 @@ plistnew="0,0 $points $xscale,$yscale $xscale,0"
 # trap for IM version
 config=`convert -list configure`
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 if [ "$im_version" -ge "06030507" ]
 	then 
 	proc="-clut"
@@ -486,17 +513,56 @@ else
 	proc="-fx 'v.p{u*v.w,0}'"
 fi
 
+if [ "$im_version" -lt "06070607" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+# note results for below will be a bit too bright; alternative if leave off is way too dark
+if [ "$im_version" -ge "06070708" -a "$im_version" -le "06080504" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+
+
+if [ "$channel" = "red" ]; then
+	cproc1="-channel red"
+	cproc2="+channel"
+elif [ "$channel" = "green" ]; then
+	cproc1="-channel green"
+	cproc2="+channel"
+elif [ "$channel" = "blue" ]; then
+	cproc1="-channel blue"
+	cproc2="+channel"
+elif [ "$channel" = "lightness" ]; then
+	cproc1="$setcspace -colorspace HSL -channel blue"
+	cproc2="+channel -colorspace $cspace"
+elif [ "$channel" = "brightness" ]; then
+	cproc1="$setcspace -colorspace HSB -channel blue"
+	cproc2="+channel -colorspace $cspace"
+elif [ "$channel" = "luma" ]; then
+	cproc1="$setcspace -colorspace YCbCr -channel red"
+	cproc2="+channel -colorspace $cspace"
+elif [ "$channel" = "luminosity" ]; then
+	cproc1="$setcspace -colorspace Lab -channel red"
+	cproc2="+channel -colorspace $cspace"
+else
+	cproc1=""
+	cproc2=""
+fi
+
 # draw white polygon on black background
 # remove first row corresponding to zero as cannot have any white on this row.
 # then box average the columns to get the lut and apply it to the image.
 ww=`convert xc: -format "%[fx:$xscale+1]" info:`
 hh=`convert xc: -format "%[fx:$yscale+1]" info:`
-convert $tmpA \
+convert \( $tmpA $cproc1 \) \
 	\( -size ${ww}x${hh} xc:black -fill white \
-	-draw "polygon $plistnew" \
+	-draw "polygon $plistnew" -alpha off \
 	-crop ${ww}x${yscale}+0+1 +repage \
 	-scale ${ww}x1! \) \
-	$proc $outfile
+	$proc $cproc2 $outfile
 
 
 # display graph if option -g
@@ -530,7 +596,7 @@ echo ""
 		text 20,17 '100' text 20,17 '100' text 40,60 '_' text 27,65 '50' \
 		text 90,112 '|' text 85,125 '50' text 70,140 'i n p u t'" $tmp1
 	convert -respect-parenthesis $tmp1 \( -background white -fill black -font Arial \
-	-pointsize 10 -gravity center label:'o \nu \nt \np \nu \nt ' -trim -write output1.png \) \
+	-pointsize 10 -gravity center label:'o \nu \nt \np \nu \nt ' -trim \) \
 	-geometry +10+20 -compose over -composite $tmp1
 	display $tmp1
 fi

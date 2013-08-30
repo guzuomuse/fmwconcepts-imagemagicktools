@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/7/2008 .......... revised 9/30/2010
+# Developed by Fred Weinhaus 3/7/2008 .......... revised 11/26/2011
 #
 # USAGE: bubblewarp ["osx,dx,isx,iox [osy,dy,isy,ioy]"] [-t type] [-m mode] [-f format] [-v vp] [-c vpcolor] [-b bgcolor] infile outfile
 # USAGE: bubblewarp [-h or -help]
@@ -383,7 +383,7 @@ elif [ "$mode" = "polar" ]
 		out="+matte $outfile"
 	fi
 	im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 	if [ "$im_version" -ge "06030600" ]
 		then 
 		rd="rd=hypot(xd,yd);"

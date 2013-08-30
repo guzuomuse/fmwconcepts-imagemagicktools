@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/08/2007 .......... revised 5/23/2008
+# Developed by Fred Weinhaus 10/08/2007 .......... revised 6/14/2013
 #
 # USAGE: space [-m mix] [-b bri] [-c con] [-s sat] [-w wn ] [-g mg ] infile outfile
 # USAGE: space [-st] infile
@@ -101,6 +101,8 @@
 # -g mg --- mg is the maximum gain limiting factor on the ration of the 
 # desired mean divided by the non-overlapping standard deviation image. Typical 
 # values are between 5 and 20. The default is 5.
+# 
+# NOTE: This script will be slow if not in HDRI mode due to the use of -fx.
 #
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -276,29 +278,67 @@ fi
 # use mpc/cache to hold input image temporarily in memory
 tmpA="$dir/space_$$.mpc"
 tmpB="$dir/space_$$.cache"
-tmpM="$dir/space_mean_$$.miff"
-tmpS="$dir/space_std_$$.miff"
-tmpME="$dir/space_meane_$$.miff"
-tmpSE="$dir/space_stde_$$.miff"
-tmp0="$dir/space_0_$$.png"
-tmp1="$dir/space_1_$$.png"
-tmp2="$dir/space_2_$$.png"
-tmp3="$dir/space_3_$$.png"
+tmpM="$dir/space_mean_$$.mpc"
+tmpM2="$dir/space_mean_$$.cache"
+tmpS="$dir/space_std_$$.mpc"
+tmpS2="$dir/space_std_$$.cache"
+tmpME="$dir/space_meane_$$.mpc"
+tmpME2="$dir/space_meane_$$.cache"
+tmpSE="$dir/space_stde_$$.mpc"
+tmpSE2="$dir/space_stde_$$.cache"
+tmp0="$dir/space_0_$$.pfm"
+tmp1="$dir/space_1_$$.pfm"
+tmp2="$dir/space_2_$$.pfm"
+tmp3="$dir/space_3_$$.pfm"
 
-trap "rm -f $tmpA $tmpB $tmpM $tmpS $tmpME $tmpSE $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmpM $tmpS $tmpME $tmpSE $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
+trap "rm -f $tmpA $tmpB $tmpM $tmpM2 $tmpS $tmpS2 $tmpME $tmpME2 $tmpSE $tmpSE2 $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmpM $tmpM2 $tmpS $tmpS2 $tmpME $tmpME2 $tmpSE $tmpSE2 $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
+
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using space.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
+
+# test for hdri enabled
+hdri_on=`convert -list configure | grep "enable-hdri"`
 
 # function to get min, max, mean, std from Brightness channel (or Graylevel image)
 function imagestats
 	{
 	data=`convert $1 -verbose info:`
-	min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$min" = "" ] && errMsg "--- MIN NOT FOUND --- "
-	max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$max" = "" ] && errMsg "--- MAX NOT FOUND --- "
-	mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$mean" = "" ] && errMsg "--- MEAN NOT FOUND --- "
-	std=`echo "$data" | sed -n '/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+	std=`echo "$data" | sed -n 's/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 	[ "$std" = "" ] && errMsg "--- STD NOT FOUND --- "
 	#
 	# express as percent
@@ -321,9 +361,11 @@ if [ "$stats" = "true" ]
 	echo "Std (0-...) = $std"
 	echo ""
 else
-	echo ""
-	echo "Please Wait - This May Take Some Time"
-	echo ""
+	if [ "$hdri_on" = "" ]; then
+		echo ""
+		echo "Please Wait - This May Take Some Time"
+		echo ""
+	fi
 	if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 		then
 		: 'do nothing special'
@@ -332,7 +374,7 @@ else
 	fi
 
 	# get image stats
-	convert $tmpA -colorspace Gray $tmp0
+	convert $tmpA $setcspace -colorspace Gray $tmp0
 	imagestats $tmp0	
 	
 	# get mean
@@ -345,11 +387,13 @@ else
 		-compose minus -composite -gamma 2 $tmpS
 		
 	# expand mean and std images
-	iwn=`echo "scale=5; 100 * 100 / $wn" | bc`
-	convert $tmpM -resize $iwn% $tmpME
-	convert $tmpS -resize $iwn% $tmpSE
+	dim=`convert $tmpA -format "%wx%h" info:`
+	convert $tmpM -resize $dim! $tmpME
+	convert $tmpS -resize $dim! $tmpSE
 	
-	
+
+if [ "$hdri_on" = "" ]; then
+echo "got here"
 	# get gain image and process output
 	dmean=`echo "scale=5; $bri * $mean / 100" | bc`
 	dstd=`echo "scale=5; $con * $std / 100" | bc`
@@ -358,20 +402,43 @@ else
 	mfm1=`echo "scale=5; (1 - $mix) / 1" | bc`
 	bfmfm1=`echo "scale=5; $bri * $mfm1 / 1" | bc`
 	gain="gn=($dstd)/(u[2]+($dsdmg));"
-	convert $tmpA $tmpME $tmpSE -monitor -fx "$gain ($fdmean)+($bfmfm1*v)+(gn*(u-v))" $tmp3
+	convert $tmpA $tmpME $tmpSE -monitor \
+		-fx "$gain ($fdmean)+($bfmfm1*v)+(gn*(u-v))" +monitor $tmp3
+else
+	dmean=`convert xc: -format "%[fx:$bri*$mean]" info:`
+	dstd=`convert xc: -format "%[fx:$con*$std/100]" info:`
+	fdmean=`convert xc: -format "%[fx:$mix*$dmean]" info:`
+	dsdmg=`convert xc: -format "%[fx:100*$dstd/$mg]" info:`
+	mfm1=`convert xc: -format "%[fx:1-$mix]" info:`
+	bfmfm1=`convert xc: -format "%[fx:$bri*$mfm1]" info:`
+	dim=`convert $tmpA -format "%wx%h" info:`
+
+	# second line -- ($fdmean)+($bfmfm1*v)
+	# third line -- u[2]+$dsdmg
+	# fourth line -- $dstd*(u-v)
+	# fifth line -- $dstd*(u-v)/(u[2]+$dsdmg)
+	# sixth line -- ($fdmean)+($bfmfm1*v)+$dstd*(u-v)/(u[2]+$dsdmg)
+	convert $tmpA $tmpME $tmpSE \
+	\( -clone 1 -evaluate multiply $bfmfm1 -evaluate add $fdmean% \) \
+	\( -clone 2 -evaluate add $dsdmg% \) \
+	\( -clone 0 -clone 1 +swap -compose minus -composite -evaluate multiply $dstd \) \
+	\(  -clone 5 -clone 4 +swap -compose divide -composite \) \
+	-delete 0,1,2,4,5 -compose plus -composite $tmp3
+fi
+
 	
 	if [ "$sat" != "" ]
-		then
+		then		
 		convert $tmp3 $tmpA
-		convert $tmpA -colorspace HSL -channel R -separate $tmp0
-		convert $tmpA -colorspace HSL -channel G -separate $tmp1
-		convert $tmpA -colorspace HSL -channel B -separate $tmp2
+		convert $tmpA $setcspace -colorspace HSL -channel R -separate $tmp0
+		convert $tmpA $setcspace -colorspace HSL -channel G -separate $tmp1
+		convert $tmpA $setcspace -colorspace HSL -channel B -separate $tmp2
 		convert $tmp1 -evaluate multiply $sat $tmp1
 		convert $tmp0 -colorspace HSL \
 			$tmp0 -compose CopyRed -composite \
 			$tmp1 -compose CopyGreen -composite \
 			$tmp2 -compose CopyBlue -composite \
-			-colorspace RGB $tmp3
+			-colorspace $cspace $tmp3
 		fi
 	convert $tmp3 $outfile
 fi

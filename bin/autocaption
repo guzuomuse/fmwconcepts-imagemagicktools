@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 2/3/2010 .......... revised 2/3/2010
+# Developed by Fred Weinhaus 2/3/2010 .......... revised 6/1/2013
 # 
 # USAGE: autocaption -s size -t text [-b buffer] [-f font] [-c color] [-u undercolor] infile outfile
 # USAGE: autocaption [-h or -help]
@@ -11,7 +11,7 @@
 # -t      text              text to apply to image; enclose in quotes
 # -b      buffer            buffer or padding around text box; integer>=0; 
 #                           default=0
-# -f      font              font name or path to font file; default=Helvetica
+# -f      font              font name or path to font file; default=Arial
 # -c      color             text color; any valid IM color specification;
 #                           default will be either black or white, whichever 
 #                           contrasts best with the color of the region that 
@@ -28,9 +28,10 @@
 # has the least color variation throughout the image.
 # 
 # DESCRIPTION: AUTOCAPTION places text automatically in a specified square size 
-# region that has the least color variation throughout the image. By default 
-# the text will be placed on the image with no undercolor. But an undercolor 
-# can be used which will cover the underlying image.
+# region that has the least color variation throughout the image. The text will 
+# be placed at the first acceptable location found. By default the text will be 
+# placed on the image with no undercolor. But an undercolor can be used which 
+# will cover the underlying image.
 # 
 # 
 # ARGUMENTS: 
@@ -45,7 +46,7 @@
 # integers greater than zero. The default=0.
 # 
 # -f font ... FONT is the text font or path to the font file. The default is 
-# Helvetica.
+# Arial.
 # 
 # -c color ... COLOR is the text color. Any valid IM color specification is 
 # allowed. The default will be either black or white, whichever contrasts best 
@@ -65,10 +66,10 @@
 
 # set default values
 size=""					# size of square match window
-pad=0					# match window pad
+buffer=0				# match window buffer (pad)
 color=""				# text color; default black or white depending upon grayscale
 ucolor="none"			# text under color; default transparent
-font="Helvetica"		# font name or path to font
+font="Arial"			# font name or path to font
 text=""
 
 # set directory for temporary files
@@ -225,7 +226,7 @@ height=`convert $tmpA1 -ping -format "%h" info:`
 
 
 # get padded size of window
-sizep=`convert xc: -format "%[fx:$size+2*$pad]" info:`
+sizep=`convert xc: -format "%[fx:$size+2*$buffer]" info:`
 
 
 # get -blur radius from padded size
@@ -238,6 +239,34 @@ yoff=$rad
 wwc=`convert xc: -format "%[fx:$width-2*$xoff]" info:`
 hhc=`convert xc: -format "%[fx:$height-2*$yoff]" info:`
 
+#echo "buffer=$buffer; sizep=$sizep; rad=$rad; wwc=$wwc; hhc=$hhc;"
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using autocaption 
+# with IM 6.6.0.10, 6.7.2.10, 6.7.4.10, 6.7.5.5, 6.7.5.9, 6.7.6.10, 6.7.8.6
+# Note: bug in caption: via pango somewhere after 6.7.2.10 and before 6.7.5.9 ?
+# Pango introduced at 6.7.3-3 -- so probably started there
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
 # get std = sqrt( ave(x^2) - ave(x)^2 )
 # second line get average of squared image
 # third line get average
@@ -246,7 +275,7 @@ hhc=`convert xc: -format "%[fx:$height-2*$yoff]" info:`
 # sixth line get std
 # seventh line get equal average of 3 channels std, then negate 
 # so best result is largest (white)
-convert $tmpA1 \
+convert $tmpA1 $setcspace \
 	\( -clone 0 -clone 0 -compose multiply -composite -virtual-pixel black -blur ${rad}x65000 \) \
 	\( -clone 0 -virtual-pixel black -blur ${rad}x65000 \) \
 	\( -clone 2 -clone 2 -compose multiply -composite \) \
@@ -255,11 +284,20 @@ convert $tmpA1 \
 	-colorspace OHTA -channel R -separate +channel -negate -depth 8 \
 	-crop ${wwc}x${hhc}+${xoff}+${yoff} +repage $tmpA2
 
+
+# get im version where -subimage-search introduced for compare
+if [ "$im_version" -ge "06060305" ]; then
+	searching="-subimage-search"
+else
+	searching=""
+fi
+
 # find location of max
 max=`convert $tmpA2 -format "%[fx:round(255*maxima)]" info:`
-data=`compare -metric rmse $tmpA2 \
+data=`compare -metric rmse $searching $tmpA2 \
 	\( -size 1x1 xc:"gray($max)" \) null: 2>&1 |\
 	tr -cs ".0-9\n" " "`
+#echo "max=$max; data=$data"
 
 # get window score and location
 score=`echo "$data" | cut -d\  -f2`
@@ -284,6 +322,7 @@ yym=`echo "$data" | cut -d\  -f4`
 	fi
 
 # write text into window
+# note caption: determination of pointsize changed at IM 6.7.7-3 according to the changelog for proper wrapping
 convert -background "$ucolor" -fill "$color" \
 	-font $font -gravity center \
 	-size ${size}x${size} caption:"$text" \
@@ -291,10 +330,11 @@ convert -background "$ucolor" -fill "$color" \
 
 
 # compute text area offset including pad correction
-xxmp=`convert xc: -format "%[fx:$xxm+$pad]" info:`
-yymp=`convert xc: -format "%[fx:$yym+$pad]" info:`
+xxmp=`convert xc: -format "%[fx:$xxm+$buffer]" info:`
+yymp=`convert xc: -format "%[fx:$yym+$buffer]" info:`
+#echo "x=$xxmp; y=$yymp"
 
-# write text onto image at match location corrected for pad
+# write text onto image at match location corrected for buffer
 convert $tmpA1 $tmpA3 -geometry +${xxmp}+${yymp} \
 -composite $outfile
 

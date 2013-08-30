@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 1/6/2009 .......... revised 3/31/2009
+# Developed by Fred Weinhaus 1/6/2009 .......... revised 4/12/2012
 # 
 # USAGE: bordergrid [-s size] [-t thickness] [-o offset] [-d dimension] [-a angle] [-c colors] [-b blur] infile outfile
 # USAGE: bordergrid [-h or -help]
@@ -292,7 +292,7 @@ convert -size ${ww1}x${hh1} xc:none \
 	\( -size 1x$thickness xc:white -size 1x$offset xc:black -append \) \
 	-channel RGBA -virtual-pixel tile -fx v \
 	\( +clone -rotate -90 \) -compose multiply -composite \
-	-background black -rotate $angle -gravity center -crop ${ww}x${hh}+0+0 +repage \
+	-background black -rotate $angle +repage -gravity center -crop ${ww}x${hh}+0+0 +repage \
 	\( -size ${ww2}x${hh2} xc:white \) -gravity center -compose over -composite \
 	$smooth -contrast-stretch 0 $colorize \
 	$tmp1
@@ -306,7 +306,7 @@ else
 convert -size ${ww1}x${hh1} xc:none \
 	\( -size 1x$thickness xc:white -size 1x$offset xc:black -append \) \
 	-channel RGBA -virtual-pixel tile -fx v \
-	-background black -rotate $angle -gravity center -crop ${ww}x${hh}+0+0 +repage \
+	-background black -rotate $angle +repage -gravity center -crop ${ww}x${hh}+0+0 +repage \
 	\( -size ${ww2}x${hh2} xc:white \) -gravity center -composite \
 	$smooth -contrast-stretch 0 $colorize \
 	$tmp1

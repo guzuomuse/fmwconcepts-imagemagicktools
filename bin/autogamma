@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/7/2008 .......... revised 3/13/2009
+# Developed by Fred Weinhaus 10/7/2008 .......... revised 6/1/2013
 #
-# USAGE: autogamma [-c colormode] infile outfile
+# USAGE: autogamma [-c colormode] [-m midrange] infile outfile
 # USAGE: autogamma [-h or -help]
 #
 # OPTIONS:
@@ -11,6 +11,8 @@
 #                         min, max, gamma statistics; choices are: 
 #                         gray, intensity, luminance, lightness, brightness, 
 #                         average, magnitude, rgb; default=luminance
+# -m      midrange        midrange value from which to compute gamma;
+#                         0<float<1; default=0.5
 #
 ###
 #
@@ -33,13 +35,16 @@
 # luminance, lightness, brightness, average, magnitude and rgb. Values  
 # of gray and intensity are equivalent. The default is luminance.
 # 
+# -m midrange ... MIDRANGE value from which to compute gamma. Values are
+# 0<floats<1. Default=0.5.
+# 
 # Gray or Intensity uses statistics from -colorspace Gray.
 # Luminance uses statistics from -colorspace Rec709Luma.
 # Lightness uses statistics from the lightness channel of -colorspace HSL.
 # Brightness uses statistics from the brightness channel of -colorspace HSB.
 # Average uses statistics from the first channel of -colorspace OHTA.
 # Magnitude uses aggregate statistics from all the channels.
-# RGB uses statistics independently from each channel of -colorspace RGB.
+# RGB uses statistics independently from each channel of -colorspace sRGB/RGB.
 # See definitions at: 
 # http://www.imagemagick.org/script/command-line-options.php#colorspace
 # 
@@ -110,7 +115,7 @@ if [ $# -eq 0 ]
    echo ""
    usage2
    exit 0
-elif [ $# -gt 4 ]
+elif [ $# -gt 6 ]
 	then
 	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
 else
@@ -140,6 +145,17 @@ else
 					   		rgb) ;;
 					   		*) errMsg "--- COLORMODE=$colormode IS AN INVALID VALUE ---" 
 					   	esac
+					   ;;
+				-m)    # get midrange
+					   shift  # to get the next parameter - radius,sigma
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MIDRANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   midrange=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$midrange" = "" ] && errMsg "--- MIDRANGE=$midrange MUST BE A NON-NEGATIVE FLOAT ---"
+					   midrangetestA=`echo "$midrange <= 0" | bc`
+					   midrangetestB=`echo "$midrange >= 1" | bc`
+					   [ $midrangetestA -eq 1 -o $midrangetestB -eq 1 ] && errMsg "--- MIDRANGE=$midrange MUST BE AN FLOAT GREATER THAN 0 AND SMALLER THAN 1 ---"
 					   ;;
 				 -)    # STDIN and end of arguments
 					   break
@@ -189,29 +205,56 @@ else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
-#convert image to RGB and separate channels according to colormode
-if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
-	convert $tmpA1 -colorspace Gray $tmpI1
-elif [ "$colormode" = "luminance" ]; then
-	convert $tmpA1 -colorspace Rec709Luma $tmpI1
-elif [ "$colormode" = "lightness" ]; then
-	convert $tmpA1 -colorspace HSL -channel B -separate $tmpI1
-elif [ "$colormode" = "brightness" ]; then
-	convert $tmpA1 -colorspace HSB -channel B -separate $tmpI1
-elif [ "$colormode" = "average" ]; then
-	convert $tmpA1 -colorspace OHTA -channel R -separate $tmpI1
-elif [ "$colormode" = "magnitude" ]; then
-	convert $tmpA1 -colorspace RGB $tmpI1
-elif [ "$colormode" = "rgb" ]; then
-	convert $tmpA1 -colorspace RGB -channel R -separate $tmpR1
-	convert $tmpA1 -colorspace RGB -channel G -separate $tmpG1
-	convert $tmpA1 -colorspace RGB -channel B -separate $tmpB1
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using autolevel.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.6
+if [ "$im_version" -lt "06070606" -o "$im_version" -gt "06070707" ]; then
+	cspace="RGB"
+else
+	cspace="sRGB"
+fi
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
 fi
 
 
-# get im version
-im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+#convert image to RGB and separate channels according to colormode
+if [ "$colormode" = "intensity" -o "$colormode" = "gray" ]; then
+	convert $tmpA1 $setcspace -colorspace Gray $tmpI1
+elif [ "$colormode" = "luminance" ]; then
+	convert $tmpA1 $setcspace -colorspace Rec709Luma $tmpI1
+elif [ "$colormode" = "lightness" ]; then
+	convert $tmpA1 $setcspace -colorspace HSL -channel B -separate $tmpI1
+elif [ "$colormode" = "brightness" ]; then
+	convert $tmpA1 $setcspace -colorspace HSB -channel B -separate $tmpI1
+elif [ "$colormode" = "average" ]; then
+	convert $tmpA1 $setcspace -colorspace OHTA -channel R -separate $tmpI1
+elif [ "$colormode" = "magnitude" ]; then
+	convert $tmpA1 $tmpI1
+elif [ "$colormode" = "rgb" ]; then
+	convert $tmpA1 $setcspace -channel R -separate $tmpR1
+	convert $tmpA1 $setcspace -channel G -separate $tmpG1
+	convert $tmpA1 $setcspace -channel B -separate $tmpB1
+fi
+
 
 getChannelStats()
 	{
@@ -219,24 +262,12 @@ getChannelStats()
 	# statistics computed as percent (of dynamic range) values
 	if [ "$im_version" -ge "06030901" ]
 		then 
-#		min=`convert $img -format "%[min]" info:`
-#		max=`convert $img -format "%[max]" info:`
 		mean=`convert $img -format "%[mean]" info:`
-#		std=`convert $img -format "%[standard_deviation]" info:`
-#		min=`convert xc: -format "%[fx:100*$min/quantumrange]" info:`
-#		max=`convert xc: -format "%[fx:100*$max/quantumrange]" info:`
 		mean=`convert xc: -format "%[fx:100*$mean/quantumrange]" info:`
-#		std=`convert xc: -format "%[fx:100*$std/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-#		min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-#		max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-		mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-#		std=`echo "$data" | sed -n '/^.*[Ss]tandard.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-#		min=`convert xc: -format "%[fx:100*$min]" info:`
-#		max=`convert xc: -format "%[fx:100*$max]" info:`
+		mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		mean=`convert xc: -format "%[fx:100*$mean]" info:`
-#		std=`convert xc: -format "%[fx:100*$std]" info:`
 	fi
 	# gamma is the ratio of logs of the mean and midvalue of the dynamic range
 	# where we normalize both to the range between 0 and 1
@@ -263,7 +294,7 @@ else
 	getChannelStats "$tmpB1"
 	echo "BLUE: gamma=$gammaval"
 	convert $tmpB1 -gamma $gammaval $tmpB1
-	convert $tmpR1 $tmpG1 $tmpB1 -combine $outfile
+	convert $tmpR1 $tmpG1 $tmpB1 -combine -colorspace $cspace $outfile
 fi
 echo ""
 exit 0

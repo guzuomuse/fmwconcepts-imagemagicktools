@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 4/10/2010 .......... revised 5/28/2010
+# Developed by Fred Weinhaus 4/10/2010 .......... revised 11/27/2011
 # 
 # USAGE: chrome [-i intensity] [-n numcycles] [-s smooth] [-a azimuth] [-e elevation] [-c color] [-b bgcolor] [-f fuzzfact] infile outfile
 # USAGE: chrome [-h or -help]
@@ -257,7 +257,7 @@ convert -quiet -regard-warnings "$infile" +repage "$tmpA1" ||
 
 # get IM version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06040809" ] && errMsg "--- IM VERSION IS NOT COMPATIBLE ---"
 
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/24/2009 .......... revised 3/24/2009
+# Developed by Fred Weinhaus 3/24/2009 .......... revised 6/14/2013
 #
 # USAGE: stdimage [-m mode] [-c] infile1 ... infileN outfile
 # USAGE: stdimage [-h or -help]
@@ -174,6 +174,30 @@ tmp0="$dir/stdimage_0_$$.miff"
 trap "rm -f $tmp0; exit 0" 0
 trap "rm -f $tmp0; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using stdimage
+# with IM 6.7.4.10, 6.7.6.10, 6.7.9.0
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
 
 # Process images
 
@@ -185,7 +209,7 @@ hh=`convert "${fileArray[0]}" -ping -format "%h" info:`
 if [ "$cs" = "no" ]; then
 	stretch=""
 else
-	stretch="-contrast-stretch 0"
+	stretch="$setcspace -contrast-stretch 0"
 fi
 
 # set up empty first frame of temporary
@@ -196,21 +220,18 @@ for img in $infilelist; do
 	convert $tmp0 $img $tmp0
 done
 
-# get im version
-im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
 
 # compute variance result
 # note -gamma 0.5 is same as -evaluate pow 2 and is same as square
 # var=ave(frames^2) - (ave(frames))^2
 # use -coalesce to separate frames and then delete intial bogus frame
 if [ "$im_version" -ge "06060904" ]; then 
-	convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -evaluate-sequence mean \) \
-		\( $tmp0 -coalesce -delete 0 -evaluate-sequence mean -gamma 0.5 \) \
+	convert \( $tmp0 -delete 0 -gamma 0.5 -evaluate-sequence mean \) \
+		\( $tmp0 -delete 0 -evaluate-sequence mean -gamma 0.5 \) \
 		+swap -compose minus -composite $tmp0
 else
-	convert \( $tmp0 -coalesce -delete 0 -gamma 0.5 -average \) \
-		\( $tmp0 -coalesce -delete 0 -average -gamma 0.5 \) \
+	convert \( $tmp0 -delete 0 -gamma 0.5 -average \) \
+		\( $tmp0 -delete 0 -average -gamma 0.5 \) \
 		+swap -compose minus -composite $tmp0
 fi
 

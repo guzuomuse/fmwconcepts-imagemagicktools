@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 2/18/2008 .......... revised 2/18/2008
+# Developed by Fred Weinhaus 2/18/2008 .......... revised 9/19/2012
 #
 # USAGE: aspect widthxheight [-m mode] [-c color] [-g gravity] [-f filter] infile outfile
 # USAGE: aspect [-h or -help]
@@ -197,23 +197,33 @@ else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
 
-dwidth=`echo "$size" | cut -dx -f1`
-dheight=`echo "$size" | cut -dx -f2`
+dwidth0=`echo "$size" | cut -dx -f1`
+dheight0=`echo "$size" | cut -dx -f2`
 
-[ "$dwidth" = "" ] && errMsg "--- NO WIDTH SPECIFIED ---"
-[ "$dheight" = "" ] && errMsg "--- NO HEIGHT SPECIFIED ---"
+[ "$dwidth0" = "" ] && errMsg "--- NO WIDTH SPECIFIED ---"
+[ "$dheight0" = "" ] && errMsg "--- NO HEIGHT SPECIFIED ---"
 
-test1=`convert $tmpA -format "%[fx:((w/h)>(${dwidth}/${dheight})?1:0)]" info:`
-test2=`convert $tmpA -format "%[fx:((w/h)>=1?1:0)]" info:`
+aspect=`convert $tmpA -format "%[fx:w/h]" info:`
+test0=`convert xc: -format "%[fx:$aspect>=1?1:0]" info:`
+# if portrait mode, swap dwidth and dheight
+if [ $test0 -eq 0 ]; then
+	aspect=`convert xc: -format "%[fx:1/$aspect]" info:`
+	dwidth=$dheight0
+	dheight=$dwidth0
+else
+	dwidth=$dwidth0
+	dheight=$dheight0
+fi
+test1=`convert xc: -format "%[fx:$aspect>(${dwidth}/${dheight})?1:0]" info:`
+test2=`convert xc: -format "%[fx:$aspect>=1?1:0]" info:`
+#echo "dwidth=$dwidth; dheight=$dheight; aspect=$aspect; test0=$test0; test1=$test1; test2=$test2;"
 
-if [ "$mode" = "crop" ]
-	then
-	if [ $test1 -eq 1 ]
-		then
+if [ "$mode" = "crop" ]; then
+
+	if [ $test1 -eq 1 ]; then
 		# "aspect larger than desired aspect (wider than tall)"
 		resize="${dheight}x${dheight}^"
-	elif [ $test2 -eq 1 ]
-		then
+	elif [ $test2 -eq 1 ]; then
 		# "aspect less than desired aspect (wider than tall) but greater than or equal to 1"
 		resize="${dwidth}x${dwidth}"
 	else
@@ -221,25 +231,26 @@ if [ "$mode" = "crop" ]
 		resize="${dwidth}x${dwidth}^"
 	fi
 	convert $tmpA -filter $filter -resize $resize \
-		-gravity $gravity -crop ${dwidth}x${dheight}+0+0 +repage $outfile
-elif [ "$mode" = "pad" ]
-	then
-	if [ $test1 -eq 1 ]
-		then
+		-gravity $gravity -crop ${dwidth0}x${dheight0}+0+0 +repage $outfile
+
+elif [ "$mode" = "pad" ]; then
+
+	if [ $test1 -eq 1 ]; then
 		# "aspect larger than desired aspect (wider than tall)"
 		resize="${dwidth}x${dwidth}"
-	elif [ $test2 -eq 1 ]
-		then
+	elif [ $test2 -eq 1 ]; then
 		# "aspect less than desired aspect (wider than tall) but greater than or equal to 1"
 		resize="${dheight}x${dheight}^"
 	else
 		# "aspect less than 1 (taller than wide)"
 		resize="${dheight}x${dheight}"
 	fi
-	convert \( -size ${dwidth}x${dheight} xc:$bgcolor \) \
+	convert \( -size ${dwidth0}x${dheight0} xc:$bgcolor \) \
 		\( -filter $filter -resize $resize $tmpA \) \
 		-gravity $gravity -composite +repage $outfile
+
 else
 	errMsg "--- UNKNOWN METHOD ---"
 fi
+
 exit 0

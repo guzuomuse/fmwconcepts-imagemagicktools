@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 5/25/2008 .......... revised 5/25/2008
+# Developed by Fred Weinhaus 5/25/2008 .......... revised 8/17/2012
 #
 # USAGE: mirrorize [-r region] infile outfile
 # USAGE: mirrorize [-h or -help]
@@ -171,10 +171,10 @@ hh=`convert $infile -format "%h" info:`
 ww2=`convert $infile -format "%[fx:floor(w/2)]" info:`
 hh2=`convert $infile -format "%[fx:floor(h/2)]" info:`
 
-echo "ww=$ww"
-echo "hh=$hh"
-echo "ww2=$ww2"
-echo "hh2=$hh2"
+#echo "ww=$ww"
+#echo "hh=$hh"
+#echo "ww2=$ww2"
+#echo "hh2=$hh2"
 
 #convert region to lowercase
 region=`echo "$region" | tr "[:upper:]" "[:lower:]"`

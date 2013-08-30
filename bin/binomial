@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 9/18/2007 .......... revised 10/25/2007
+# Developed by Fred Weinhaus 9/18/2007 .......... revised 8/5/2012
 # 
 # USAGE: binomial [-w width] [-t type] [-m mix] [-b bias] infile outfile
 # USAGE: binomial [-h or -help]
@@ -386,5 +386,6 @@ echo ""
 
 
 # convolve image with kernel
-convert $infile -bias $biasval% -convolve "$kern1D" $outfile
+# NOTE: improper nomalization for -convolve for zero sum (edge) filters between IM 6.7.6.6 and 6.7.8.7 (fixed 6.7.8.8)
+convert $infile -bias $biasval% -define convolve:scale=\! -convolve "$kern1D" $outfile
 exit 0

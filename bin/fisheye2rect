@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 8/5/2008 .......... revised 8/10/2008
+# Developed by Fred Weinhaus 8/5/2008 .......... revised 3/8/2012
 # 
 # USAGE: fisheye2rect [widthxheight] [-i ifov] [-o ofov] [-t type] [-f format] [-m mode] [-c xc,yc] [-l xl,yl] [-r radius] [-v vpmethod] [-b bgcolor] infile outfile
 # USAGE: fisheye2rect -d [-c xc,yc] [-r radius] [-s strokecolor] infile outfile
@@ -441,7 +441,7 @@ fi
 # stereographic: r=2*f*tan(phi/2); f=(r/2)/tan(phi/2); f=(N/4)/(tan((fov/4)*(pi/180)))=N/(4*tan(fov*pi/720))
 
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 # see Bourke diagram at http://local.wasp.uwa.edu.au/~pbourke/projection/fish2/
 
@@ -464,33 +464,43 @@ fi
 # use inverse equations and 
 # add thetal to get absolute theta
 theta="theta=atan($ofocinv*(xd))+$thetal;"
-phi="phi=atan($ofocinv*(yd));"
+# phi is now a reserved word in fx since Oct, 2011
+# so change phi to phiang
+phiang="phiang=atan($ofocinv*(yd));"
 
 # correct for lens type converting (phi+phil) to rr to get absolute radius
 if [ "$type" = "linear" ]
 	then
 	ifoc=`convert xc: -format "%[fx:($sdim*180)/($ifov*pi)]" info:`
 	phil=`convert xc: -format "%[fx:$radl/$ifoc]" info:`
-	rr="rr=$ifoc*(phi+$phil);"
+	rr="rr=$ifoc*(phiang+$phil);"
 elif [ "$type" = "equalarea" ]
 	then
 	#note ifoc2 rather than ifoc to save computations
 	ifoc2=`convert xc: -format "%[fx:$sdim/(2*sin($ifov*pi/720))]" info:`
-	rr="rr=$ifoc2*sin((phi+$phil)/2);"
+	rr="rr=$ifoc2*sin((phiang+$phil)/2);"
 elif [ "$type" = "orthographic" ]
 	then
 	ifoc=`convert xc: -format "%[fx:$sdim/(2*sin($ifov*pi/360))]" info:`
-	rr="rr=$ifoc*sin(phi+$phil);"
+	rr="rr=$ifoc*sin(phiang+$phil);"
 elif [ "$type" = "stereographic" ]
 	then
 	#note ifoc2 rather than ifoc to save computations
 	ifoc2=`convert xc: -format "%[fx:$sdim/(2*tan($ifov*pi/720))]" info:`
-	rr="rr=$ifoc2*tan((phi+$phil)/2);"
+	rr="rr=$ifoc2*tan((phiang+$phil)/2);"
 fi
 
 #find xs,ys in input from rr, theta
 xs="xs=rr*cos(theta)+$xcs;"
 ys="ys=rr*sin(theta)+$ycs;"
+
+if [ "$vpmethod" = "transparent" -o "$bgcolor" = "none" ]
+	then
+	# create alpha channel
+	virtual="-matte -channel RGBA -virtual-pixel $vpmethod -background $bgcolor"
+else
+	virtual="-virtual-pixel $vpmethod -background $bgcolor"
+fi
 
 if false; then
 # debugging - show echo results if set to true
@@ -509,7 +519,7 @@ if [ "$draw" = "yes" ]
 else
 	convert \( -size ${dwidth}x${dheight} xc: \) $tmpA \
 		-virtual-pixel $vpmethod -background $bgcolor -monitor \
-		-fx "$xd $yd $theta $phi $rr $xs $ys v.p{xs,ys}" \
+		-fx "$xd $yd $theta $phiang $rr $xs $ys v.p{xs,ys}" \
 		$outfile
 fi
 exit 0

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 8/25/2009 .......... revised 8/25/2009
+# Developed by Fred Weinhaus 8/25/2009 .......... revised 8/27/2013
 #
 # USAGE: normcrosscorr [-s] [-p] [-m mode] [-c color] smallfile largefile corrfile [matchfile]
 # USAGE: normcrosscorr [-h or -help]
@@ -25,26 +25,21 @@
 # PURPOSE: To compute the normalized cross correlation surface to find where 
 # a small image best matches within a larger image.
 # 
-# DESCRIPTION: NORMCROSSCORR compute the normalized cross correlation surface 
+# DESCRIPTION: NORMCROSSCORR computes the normalized cross correlation surface 
 # (image) to find where a small (first) image best matches within a larger 
 # (second) image. Since the matching may differ for each channel, the two 
 # input images will be converted to grayscale. Any alpha channel on either 
-# image will be removed automatically before processing.
+# image will be removed automatically before processing. Values in the 
+# correlation surface can vary between +1 and -1, with a perfect match 
+# being +1. If the correlation surface result is saved to an image format 
+# that does not support negative values, the correlation surface will be 
+# clamped so that all negative values are zero.
 # 
-# WARNING: Due to the way ImageMagick normalizes images internally to a full 
-# dynamic range of 0 to 1 before doing any processing such as image-to-image 
-# multiplication, the correlation surface will not generally have a perfect 
-# match score of +1, but will be image dependent and smaller than 1. 
-# Nevertheless, it does seem to find the correct best match location.
-# 
-# REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled 
-# in any quantum level of Q8, Q16 or Q32. Also requires the FFTW delegate 
-# library.
 # 
 # OPTIONS: 
 # 
 # -s ... Stretch the normalized cross correlation surface image to full 
-# dynamic range so that the best match is full white. Default is no stretch
+# dynamic range. Default is no stretch.
 # 
 # -p ... Apply a pseudocoloring to the normalized cross correlation surface 
 # image where red corresponds to the highest values and purple to the lowest 
@@ -53,18 +48,24 @@
 # -m mode ... MODE is the layout mode for the optional matchfile image.
 # Choices are draw (or d) or overlay (or o). Draw simply draws a colored box 
 # outline at the best match subsection in the larger image. Overlay inserts 
-# the small image at the match location of a one-half transparent version of 
-# the larger image. The default="draw". Ignored if no matchfile specified.
+# the small image at the match location of a 30% opaque version of the larger
+# image. The default="draw". Ignored if no matchfile specified.
 # 
 # -c color ... COLOR is the color to use to draw the outline of the best 
-# matching subsection in the larger image when mode=1. Any valid IM color 
+# matching subsection in the larger image when mode=draw. Any valid IM color 
 # specification may be used. The default=black.
 # 
-# REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled.
+# REQUIREMENTS: IM version 6.5.4-7 or higher, but compiled with HDRI enabled 
+# in any quantum level of Q8, Q16 or Q32. Also requires the FFTW delegate 
+# library.
+# 
+# See http://www.fmwconcepts.com/imagemagick/fourier_transforms/fourier.html 
+# for more details about the Fourier Transform with ImageMagick.
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
 # foolproof. Use At Your Own Risk. 
+# 
 # 
 ######
 #
@@ -77,7 +78,7 @@ color="black"		#any valid IM color
 transp=0.5			#transparency of large image in mode=overlay
 
 # set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
+tmpdir="/tmp"
 
 # set up functions to report Usage and Usage with Description
 PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
@@ -123,7 +124,7 @@ crossCorr()
 		\( -clone 0 -clone 3 -compose multiply -composite \) \
 		\( -clone 1 -clone 2 -compose multiply -composite \) \
 		\( -clone 7 -clone 8 +swap -compose minus -composite \) \
-		-delete 0-5,7,8 +ift $tmp0
+		-delete 0-5,7,8 +ift "$dir/tmp0.mpc"
 	}
 
 # function to test for minus at start of value of second part of option 1 or 2
@@ -207,137 +208,187 @@ fi
 # test that outfile provided
 [ "$corrfile" = "" ] && errMsg "NO CORRELATION FILE SPECIFIED"
 
-# setup temporary images
-tmpA1="$dir/normcrosscorr_1_$$.mpc"
-tmpB1="$dir/normcrosscorr_1_$$.cache"
-tmpA2="$dir/normcrosscorr_2_$$.mpc"
-tmpB2="$dir/normcrosscorr_2_$$.cache"
-tmpS="$dir/normcrosscorr_S.pfm"
-tmpU="$dir/normcrosscorr_W.pfm"
-tmpL="$dir/normcrosscorr_L.pfm"
-tmpL2="$dir/normcrosscorr_L2.pfm"
-tmp0="$dir/normcrosscorr_0.pfm"
-tmpP="$dir/normcrosscorr_P.pfm"
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpS $tmpU $tmpL $tmpL2 $tmp0 $tmpP; exit 0" 0
-trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpS $tmpU $tmpL $tmpL2 $tmp0 $tmpP; exit 1" 1 2 3 15
+
+
+# Setup directory for temporary files
+# On exit remove ALL -- the whole directory of temporary images
+dir="$tmpdir/$PROGNAME.$$"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+mkdir "$dir" || {
+  echo >&2 "$PROGNAME: Unable to create working dir \"$dir\" -- ABORTING"
+  exit 10
+}
 
 # read the input image and filter image into the temp files and test validity.
-convert -quiet -regard-warnings "$smallfile" -alpha off +repage -write "$tmpA1" -colorspace gray "$tmpS" ||
+convert -quiet -regard-warnings "$smallfile" -alpha off +repage +write "$dir/tmpA4.mpc" -colorspace gray "$dir/tmpA1.mpc" ||
 	errMsg "--- FILE $smallfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
-convert -quiet -regard-warnings "$largefile" -alpha off +repage -write "$tmpA2" -colorspace gray "$tmpL" ||
+convert -quiet -regard-warnings "$largefile" -alpha off +repage +write "$dir/tmpA3.mpc" -colorspace gray "$dir/tmpA2.mpc" ||
 	errMsg "--- FILE $largefile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
 
 
 # test for valid version of IM
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 [ "$im_version" -lt "06050407" ] && errMsg "--- REQUIRES IM VERSION 6.5.4-7 OR HIGHER ---"
 
 # test for hdri enabled
 hdri_on=`convert -list configure | grep "enable-hdri"`
 [ "$hdri_on" = "" ] && errMsg "--- REQUIRES HDRI ENABLED IN IM COMPILE ---"
 
-# get image dimensions to be sure that infile1 is smaller than infile2
-ws=`identify -ping -format "%w" $tmpA1`
-hs=`identify -ping -format "%h" $tmpA1`
-wl=`identify -ping -format "%w" $tmpA2`
-hl=`identify -ping -format "%h" $tmpA2`
 
-[ $ws -gt $wl ] && errMsg "--- SECOND IMAGE MUST BE WIDER THAN FIRST IMAGE ---"
-[ $hs -gt $hl ] && errMsg "--- SECOND IMAGE MUST BE TALLER THAN FIRST IMAGE ---"
+# get image dimensions to be sure that infile1 is smaller than infile2
+ws=`identify -ping -format "%w" "$dir/tmpA1.mpc"`
+hs=`identify -ping -format "%h" "$dir/tmpA1.mpc"`
+wlo=`identify -ping -format "%w" "$dir/tmpA2.mpc"`
+hlo=`identify -ping -format "%h" "$dir/tmpA2.mpc"`
+
+[ $ws -gt $wlo ] && errMsg "--- SECOND IMAGE MUST BE WIDER THAN FIRST IMAGE ---"
+[ $hs -gt $hlo ] && errMsg "--- SECOND IMAGE MUST BE TALLER THAN FIRST IMAGE ---"
+
+
+# make large image even dimensions and square
+wl=`convert xc: -format "%[fx:2*ceil($wlo/2)]" info:`
+hl=`convert xc: -format "%[fx:2*ceil($hlo/2)]" info:`
+# test if large image is square and if not, then pad with the mean
+test1=`convert xc: -format "%[fx:($wl==$hl)?1:0]" info:`
+if [ $test1 -eq 0 ]; then
+	# not square so get larger dimension
+	maxdim=`convert xc: -format "%[fx:max($wl,$hl)]" info:`
+	wl=$maxdim
+	hl=$maxdim
+fi
+mean=`convert "$dir/tmpA2.mpc" -format "%[fx:100*mean]" info:`
+convert "$dir/tmpA2.mpc" -background "gray($mean%)" -extent ${wl}x${hl} "$dir/tmpA2.mpc"
+#echo "ws=$ws; hs=$hs; wlo=$wlo; hlo=$hlo; wl=$wl; hl=$hl;"
 
 
 : '
-C = ((S-Ms) X L)/(sigmaS*sqrt(Nx(U X L^2) - (U X L)^2)
+C = ((S-Ms) X (L-Ml))/(sigmaS*sqrt(Nx(U X L^2) - (U X L)^2)
 where
 A X B = I(F(A*)F(B)] and A* is complex conjugate of A, F=FFT and I=IFT
 L is large image.
+L-Ml is the mean subtracted large image. 
 S-Ms is the mean subtracted small image. 
 U is a unit image (value=1) 
 Both S-Ms and U are padded at right and bottom to size of L. 
 '
 
 # compute N=wsxhs = total pixels in small image
-N=`convert xc: -format "%[fx:$ws*$hs]" info:`
+Ns=`convert xc: -format "%[fx:$ws*$hs]" info:`
+Nl=`convert xc: -format "%[fx:$wl*$hl]" info:`
+
+# get quantumrange
+qrange=`convert xc: -format "%[fx:quantumrange]" info:`
+qrangesqr=`convert xc: -format "%[fx:sqrt(quantumrange)]" info:`
+qscale=`convert xc: -format "%[fx:100*quantumscale]" info:`
+
+# get factors
+fact1=`convert xc: -format "%[fx:1/$Ns]" info:`
+fact2=`convert xc: -format "%[fx:$qrange/($Ns*$Ns)]" info:`
+
+#echo "Ns=$Ns; Nl=$Nl fact1=$fact1; fact2=$fact2; qrange=$qrange; qrangesqr=$qrangesqr;"
+
 
 # get mean and std of small image
-mean=`convert $tmpS -format "%[mean]" info:`
-std=`convert $tmpS -format "%[standard_deviation]" info:`
-#echo "mean=$mean; std=$std"
+mean=`convert "$dir/tmpA1.mpc" -format "%[mean]" info:`
+std=`convert "$dir/tmpA1.mpc" -format "%[standard-deviation]" info:`
+
+# get mean of large image
+meanl=`convert "$dir/tmpA2.mpc" -format "%[mean]" info:`
+#echo "mean=$mean; std=$std; meanl=$meanl"
 
 # ncc has range -1 to +1, so need to scale that to range 0 to quantumrange
 # thus we scale by dividing std by quantumrange and 
 # note that negatives are clipped by PNG output.
-if [ "$im_version" -ge "06050410" ]; then
-	#HDRI was auto scaled by quantumrange
-	# not sure why a perfect match is considerably less that quantumrange?
-	std=`convert xc: -format "%[fx:$std/(quantumrange)]" info:`
-	divide1="-evaluate divide 100%"
-else
+if [ "$im_version" -lt "06050410" ]; then
 	#HDRI was unscaled by quantumrange
 	# so need the extra factor of quantumrange?
 	# not sure why a perfect match is considerably less that quantumrange?
-	std=`convert xc: -format "%[fx:$std/(quantumrange*quantumrange)]" info:`
-	divide1=""
+	std=`convert xc: -format "%[fx:$std/(quantumrange)]" info:`
 fi
 #echo "std=$std"
 
-
 # get square of large image and take FFT
-convert $tmpL $tmpL \
-	-compose multiply -composite +fft $tmpL2
+# correct for IM normalization by multiplying by quantumrange
+convert "$dir/tmpA2.mpc" "$dir/tmpA2.mpc" -compose multiply -composite -evaluate multiply $qrange +fft "$dir/tmpL2.mpc"
 
 # take FFT of large image
-convert $tmpL +fft $tmpL
+convert "$dir/tmpA2.mpc" +fft "$dir/tmpL.mpc"
+
+# subtract mean of large image and take FFT
+convert "$dir/tmpA2.mpc" -evaluate subtract $meanl +fft "$dir/tmpLM.mpc"
 
 # subtract mean from small image and pad and take FFT
-
-convert $tmpS -evaluate subtract $mean \
-	-background black -extent ${wl}x${hl} +fft $tmpS
+# unnormalize FFT by multiplying by Nl
+convert "$dir/tmpA1.mpc" -evaluate subtract $mean \
+	-background black -extent ${wl}x${hl} +fft -evaluate multiply $Nl "$dir/tmpS.mpc"
 
 # create identity U image (value=1) and pad and take FFT
-convert -size ${ws}x${hs} xc:white $divide1 \
-	-background black -extent ${wl}x${hl} +fft $tmpU
+# unnormalize FFT by multiplying by Nl
+convert -size ${ws}x${hs} xc:white -background black -extent ${wl}x${hl} +fft -evaluate multiply $Nl "$dir/tmpU.mpc"
 
-# create (S-Ms) X L
-crossCorr $tmpS $tmpL
-convert $tmp0 $tmpS
+# create (S-Ms) X (L-Ml)/Ns
+crossCorr  "$dir/tmpS.mpc"  "$dir/tmpLM.mpc"
+convert "$dir/tmp0.mpc" -evaluate multiply $fact1 "$dir/tmpSL.mpc"
 
-# create N(U X L^2)
-crossCorr $tmpU $tmpL2
-convert $tmp0 -evaluate multiply $N $tmpL2
+# create (U X L^2)/Ns
+crossCorr "$dir/tmpU.mpc" "$dir/tmpL2.mpc"
+convert "$dir/tmp0.mpc" -evaluate multiply $fact1 "$dir/tmpL2.mpc"
 
-#create (U X L)^2
-crossCorr $tmpU $tmpL
-convert $tmp0 $tmp0 -compose multiply -composite $tmpU
-	
+#create (U X L)^2/Ns^2
+crossCorr  "$dir/tmpU.mpc"  "$dir/tmpL.mpc"
+# multiply by qrange to account for IM normalization in multiply
+# so final multiply is qrange/(Ns*Ns)
+convert "$dir/tmp0.mpc" "$dir/tmp0.mpc" -compose multiply -composite -evaluate multiply $fact2 "$dir/tmpL.mpc"
+
+
+# compute the std of L denominator image
+# IM normalizes sqrt in range 0 to 1, then multiplies by qrange
+# thus need to divide by sqrt(qrange) to compensate
+# make white image
+# trap values for std of large image if too close to 0 (when sub region is too constant a color), so no divide by zero
+# replacing the use of -fx "(abs(u)<0.002)?1:u"
+convert \( "$dir/tmpL2.mpc" "$dir/tmpL.mpc" +swap -compose minus -composite \
+		-evaluate pow 0.5 -evaluate divide $qrangesqr \) \
+	\( -size ${wl}x${hl} xc:white \) \
+	\( -clone 0 -clone 0 -compose multiply -composite -evaluate pow 0.5 \
+		-threshold 0.2% -negate \) \
+	-compose over -composite "$dir/tmpL.mpc"
+
+
 #evaluate normalize cross correlation image
-convert $tmpS \
-	\( $tmpL2 $tmpU +swap -compose minus -composite \
-	-evaluate pow 0.5 -evaluate multiply $std \) \
-	+swap -compose divide -composite $tmp0
+# multiply by qrange to convert ncc result from 1 to qrange so that normalized value is 1
+convert "$dir/tmpSL.mpc" -evaluate multiply $qrange \
+	\( "$dir/tmpL.mpc" -evaluate multiply $std \) \
+	+swap -compose over -compose divide -composite -crop ${wlo}x${hlo}+0+0 +repage \
+	"$dir/tmp0.mpc"
+
+
 
 # setup pseudocolor lut
 if [ "$pseudocolor" = "yes" ]; then
 	convert xc:blueviolet xc:blue xc:cyan xc:green1 \
 		xc:yellow xc:orange xc:red +append \
-		-filter cubic -resize 256x1 $tmpP
-	colorize="$tmpP -clut"
+		-filter cubic -resize 256x1 "$dir/tmpP.mpc"
+	colorize="$dir/tmpP.mpc -clut"
 else
 colorize=""
 fi
 
 # setup stretch
 if [ "$stretch" = "yes" ]; then
-	max=`convert $tmp0 -format "%[max]" info:`
-	#echo "max=$max"
-	convert \( $tmp0 -level 0x$max \) $colorize $corrfile
+#	max=`convert "$dir/tmp0.mpc" -format "%[max]" info:`
+#	min=`convert "$dir/tmp0.mpc" -format "%[min]" info:`
+	#echo "max=$max; min=$min"
+#	convert \( "$dir/tmp0.mpc" -level 0x$max \) $colorize $corrfile
+	convert \( "$dir/tmp0.mpc" -auto-level \) $colorize $corrfile
 else
-	convert $tmp0 $colorize $corrfile
+	convert "$dir/tmp0.mpc" $colorize $corrfile
 fi
 
-: '
+: <<COMMENT
 #old slow method 
 echo "get match"
 # convert to txt format
@@ -347,7 +398,7 @@ echo "get match"
 # keep 1 result with highest value in field 3
 # for that result get fields 1 and 2 for location
 # convert space to + sign
-match=`convert $tmp0 txt:- | tail -n +2 | tr -cs '0-9\012' ' ' | \
+match=`convert  "$dir/tmp0.mpc" txt:- | tail -n +2 | tr -cs '0-9\012' ' ' | \
 sort -n -r -k 3 | head -n 1 | cut -d\  -f 1-3`
 echo ""
 echo "Match Coords And Score: $match"
@@ -357,12 +408,12 @@ ulx=`echo $match | cut -d\  -f 1`
 uly=`echo $match | cut -d\  -f 2`
 subsection="${ws}x${hs}+$ulx+$uly"
 echo "$subsection"
-'
+COMMENT
 
 
 #echo "get match"
-max=`convert $tmp0 -format "%[fx:maxima]" info:`
-str=`convert $tmp0 -fx "u>=($max-quantumscale)?debug(u):0" null: 2>&1`
+max=`convert "$dir/tmp0.mpc" -format "%[fx:maxima]" info:`
+str=`convert "$dir/tmp0.mpc" -fx "u>=($max-quantumscale)?debug(u):0" null: 2>&1`
 coords=`echo "$str" | sed -n 's/^.*\[\([0-9]*,[0-9]*\)\]\.red.*$/\1/p'`
 echo ""
 echo "Match Coords: ($coords) And Score In Range 0 to 1: ($max)"
@@ -375,15 +426,14 @@ subsection="${ws}x${hs}+$ulx+$uly"
 #echo "$subsection"
 
 
-
 if [ "$matchfile" != "" -a "$mode" = "draw" ]; then
 	lrx=$(($ulx+$ws))
 	lry=$(($uly+$hs))
 #echo "ulx=$ulx; uly=$uly; lrx=$lrx; lry=$lry"
-	convert $tmpA2 -fill none -stroke "$color" \
+	convert $dir/tmpA3.mpc[${wlo}x${hlo}+0+0] -fill none -stroke "$color" \
 		-draw "rectangle $ulx,$uly $lrx,$lry" $matchfile
 elif [ "$matchfile" != "" -a "$mode" = "overlay" ]; then
-	convert \( $tmpA2 -alpha on -channel a -fx "0.3" \) $tmpA1 \
+	convert \( "$dir/tmpA3.mpc" -alpha on -channel a -evaluate set 30% +channel \) "$dir/tmpA4.mpc" \
 		-geometry "$subsection" -compose over -composite $matchfile
 fi
 exit 0

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/30/2008 .......... revised 8/14/2008
+# Developed by Fred Weinhaus 7/30/2008 .......... revised 6/13/2013
 # 
 # USAGE: polar [-m mode] [-c xc,yc] [-r rmn,rmx] [-a amn,amx] [-v vpmode] [-b bgcolor] infile outfile
 # USAGE: polar [-h or -help]
@@ -273,7 +273,7 @@ fi
 
 # get IM Version
 im_version=`convert -list configure | \
-	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+	sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 
 # set channel if bgcolor=none
@@ -291,7 +291,7 @@ yy="yy=((j-$rmn)*$rmx/(h-1))*cos((($amx-$amn)*pi/180)*(i/(w-1))+($amn*pi/180))+$
 xx="xx=((j-$rmn)*$rmx/(h-1))*sin((($amx-$amn)*pi/180)*(i/(w-1))+($amn*pi/180))+$xc;"
 
 convert $infile -virtual-pixel $vpmode -background $bgcolor -monitor \
-	-fx "$xx $yy u.p{xx,yy}" $outfile
+	-fx "$xx $yy u.p{xx,yy}" +monitor $outfile
 fi
 
 # polar2rect
@@ -306,7 +306,7 @@ xx="xx=(aa-(pi/180)*$amn)*(w-1)/((pi/180)*($amx-$amn));"
 yy="yy=(rr-$rmn)*(h-1)/($rmx-$rmn);"
 
 convert $infile -virtual-pixel $vpmode -background $bgcolor -monitor \
-	-fx "$rr $aa $xx $yy u.p{xx,yy}" $outfile
+	-fx "$rr $aa $xx $yy u.p{xx,yy}" +monitor $outfile
 fi
 
 exit 0

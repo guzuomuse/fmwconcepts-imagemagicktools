@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 10/29/2008 .......... revised 10/29/2008
+# Developed by Fred Weinhaus 10/29/2008 .......... revised 6/11/2013
 #
 # USAGE: isodatathresh [-g graph] infile outfile
 # USAGE: isodatathresh [-help]
@@ -158,18 +158,43 @@ fi
 inname=`convert $infile -format "%t" info:`
 histfile=${inname}_histog_isodata.gif
 
-tmpA1="$dir/kmeansthresh_1_$$.mpc"
-tmpA2="$dir/kmeansthresh_1_$$.cache"
-tmpM1="$dir/autothresh1_M_$$.mpc"
-tmpM2="$dir/autothresh1_M_$$.cache"
-tmpL1="$dir/autothresh1_L_$$.mpc"
-tmpL2="$dir/autothresh1_L_$$.cache"
-tmpH1="$dir/autothresh1_H_$$.mpc"
-tmpH2="$dir/autothresh1_H_$$.cache"
+tmpA1="$dir/isodatathresh_1_$$.mpc"
+tmpA2="$dir/isodatathresh_1_$$.cache"
+tmpM1="$dir/isodatathresh_M_$$.mpc"
+tmpM2="$dir/isodatathresh_M_$$.cache"
+tmpL1="$dir/isodatathresh_L_$$.mpc"
+tmpL2="$dir/isodatathresh_L_$$.cache"
+tmpH1="$dir/isodatathresh_H_$$.mpc"
+tmpH2="$dir/isodatathresh_H_$$.cache"
 trap "rm -f $tmpA1 $tmpA2 $tmpM1 $tmpM2 $tmpL1 $tmpL2 $tmpH1 $tmpH2; exit 0" 0
-trap "rm -f $tmpA1 $tmpA2 $tmpM1 $tmpM2 $tmpL1 $tmpL2 $tmpH1 $tmpH2; exit 1" 1 2 3 15
+trap "rm -f $tmpA1 $tmpA2 $tmpM1 $tmpM2 $tmpL1 $tmpL2 $tmpH1 $tmpH2 $histfile; exit 1" 1 2 3 15
 
-if convert -quiet -regard-warnings "$infile" -colorspace Gray +repage "$tmpA1"
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using isodatathresh.
+# with IM 6.7.4.10, 6.7.6.10, 6.7.8.10
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+fi
+
+
+if convert -quiet -regard-warnings "$infile" $setcspace -colorspace Gray +repage "$tmpA1"
 	then
 	: ' do nothing '
 else
@@ -178,7 +203,7 @@ fi
 
 # get im version
 im_version=`convert -list configure | \
-sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+sed '/^LIB_VERSION_NUMBER /!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
 
 getMinMax()
 	{
@@ -191,8 +216,8 @@ getMinMax()
 		max=`convert xc: -format "%[fx:100*$max/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-		min=`echo "$data" | sed -n '/^.*[Mm]in:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
-		max=`echo "$data" | sed -n '/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		min=`echo "$data" | sed -n 's/^.*[Mm]in:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
+		max=`echo "$data" | sed -n 's/^.*[Mm]ax:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		min=`convert xc: -format "%[fx:100*$min)]" info:`
 		max=`convert xc: -format "%[fx:100*$max)]" info:`
 	fi
@@ -208,7 +233,7 @@ getMean()
 		mean=`convert xc: -format "%[fx:100*$mean/quantumrange]" info:`
 	else
 		data=`convert $img -verbose info:`
-		mean=`echo "$data" | sed -n '/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/{ s//\1/; p; q; }'`
+		mean=`echo "$data" | sed -n 's/^.*[Mm]ean:.*[(]\([0-9.]*\).*$/\1/p ' | head -1`
 		mean=`convert xc: -format "%[fx:100*$mean]" info:`
 	fi
 	}
@@ -273,21 +298,21 @@ echo ""
 
 
 if [ "$graph" != "" ]; then
-xx=`convert xc: -format "%[fx:floor(255*$thresh/100)]" info:`
-convert $tmpA1 histogram:- | \
-	convert - -negate \
-	-stroke red -strokewidth 1 -draw "line $xx,0 $xx,200" \
-	-background gray -splice 0x30 \
-	-fill white -stroke white -strokewidth 1 \
-	-font ArialB -pointsize 24 \
-	-draw "text 4,22 'threshold=$thresh%'" -resize 50% \
-	$histfile
+	xx=`convert xc: -format "%[fx:floor(255*$thresh/100)]" info:`
+	convert $tmpA1 -define histogram:unique-colors=false histogram:- | \
+		convert - -negate \
+		-stroke red -strokewidth 1 -draw "line $xx,0 $xx,200" \
+		-background gray -splice 0x30 \
+		-fill white -stroke white -strokewidth 1 \
+		-font ArialB -pointsize 24 \
+		-draw "text 4,22 'threshold=$thresh%'" -resize 50% \
+		-bordercolor gray50 -border 5 \
+		$histfile
 fi
 
 if [ "$graph" = "view" ]; then
 	convert $histfile x:
-	trap "rm -f $histfile; exit 0" 0
-	trap "rm -f $histfile; exit 1" 1 2 3 15
+	rm -f $histfile
 fi
 
 exit 0

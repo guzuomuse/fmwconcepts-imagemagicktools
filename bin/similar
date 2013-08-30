@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 12/30/2009 .......... revised 1/14/2010
+# Developed by Fred Weinhaus 12/30/2009 .......... revised 8/24/2013
 # 
 # USAGE: similar [-m mode] infile1 infile2
 # USAGE: similar [-h or -help]
@@ -35,6 +35,8 @@
 # correlation metric on the two images. If mode=g, then the two image will be 
 # converted to grayscale. If mode=rgb, then the ncc similarity metric will be 
 # computed for each channel and then combined as its rms value. Default=g
+# 
+# NOTE: For best accuracy, this script should be run in HDRI compilation of IM.
 # 
 # For reference on the normalized cross correlation metric, see 
 # http://en.wikipedia.org/wiki/Cross-correlation#Normalized_cross-correlation
@@ -179,11 +181,43 @@ tmpB4="$dir/similar_4_$$.cache"
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3 $tmpA4 $tmpB4; exit 0" 0
 trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2 $tmpA3 $tmpB3 $tmpA4 $tmpB4; exit 1" 1 2 3 15
 
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# colorspace RGB and sRGB swapped between 6.7.5.5 and 6.7.6.7 
+# though probably not resolved until the latter
+# then -colorspace gray changed to linear between 6.7.6.7 and 6.7.8.2 
+# then -separate converted to linear gray channels between 6.7.6.7 and 6.7.8.2,
+# though probably not resolved until the latter
+# so -colorspace HSL/HSB -separate and -colorspace gray became linear
+# but we need to use -set colorspace RGB before using them at appropriate times
+# so that results stay as in original script
+# The following was determined from various version tests using similar.
+# with IM 6.6.0.10, 6.6.1.10, 6.6.2.10, 6.7.4.10, 6.7.6.10, 6.7.9.0
+# Note: prior to about 6.6.1.10 and certainly for 6.6.0.10 values are different
+if [ "$im_version" -lt "06070607" -o "$im_version" -gt "06070707" ]; then
+	setcspace="-set colorspace RGB"
+else
+	setcspace=""
+fi
+if [ "$im_version" -ge "06070606" ]; then
+	cspace="sRGB"
+else
+	cspace="RGB"
+fi
+# no need for setcspace for grayscale or channels after 6.8.5.4
+if [ "$im_version" -gt "06080504" ]; then
+	setcspace=""
+	cspace="sRGB"
+fi
+
+
 # set up colorspace conversion
 if [ "$mode" = "g" ]; then
-	cspace="-colorspace gray"
+	cspace="$setcspace -colorspace gray"
 else
-	cspace="-colorspace rgb"
+	cspace="-colorspace $cspace"
 fi
 
 # read the input images into the temp files and test validity.
@@ -217,21 +251,20 @@ nccMetric()
 		errMsb "--- ONE OR BOTH IMAGES ARE CONSTANT VALUES (NCC=0/0) ---"
 	else
 		# -compose mathematics ... is equivalent to -fx "(u-$m1)*(v-$m2)"
-		ncc=`convert $img1 $img2 -compose mathematics \
-		-set option:compose:args "1,-$m1,-$m2,$m12" -composite  miff:- |\
-		convert - -format "%[fx:mean/($s1*$s2)]" info:`
+		ncc=`convert $img1 $img2 -set option:compose:args "1,-$m1,-$m2,$m12" \
+			-compose mathematics -composite -format "%[fx:mean/($s1*$s2)]" info:`
 	fi
 	}
 
 
 if [ "$mode" = "g" ]; then
-	convert $tmpA1 -channel g -separate $tmpA3
-	convert $tmpA2 -channel g -separate $tmpA4
-	nccMetric "$tmpA3" "$tmpA4"
+#	convert $tmpA1 $setcspace -channel g -separate $tmpA3
+#	convert $tmpA2 $setcspace -channel g -separate $tmpA4
+	nccMetric "$tmpA1" "$tmpA2"
 	nccgray=$ncc
 	if [ "$aon" = "yes" ]; then
-		convert $tmpA1 -channel a -separate $tmpA3
-		convert $tmpA2 -channel a -separate $tmpA4
+		convert $tmpA1 -alpha extract $tmpA3
+		convert $tmpA2 -alpha extract $tmpA4
 		nccMetric "$tmpA3" "$tmpA4"
 		nccalpha=$ncc
 		ncc=`convert xc: -format \
@@ -241,24 +274,24 @@ if [ "$mode" = "g" ]; then
 	fi
 	echo "Similarity Metric: $ncc"
 else
-	convert $tmpA1 -channel red -separate $tmpA3
-	convert $tmpA2 -channel red -separate $tmpA4
+	convert $tmpA1 $setcspace -channel red -separate $tmpA3
+	convert $tmpA2 $setcspace -channel red -separate $tmpA4
 	nccMetric "$tmpA3" "$tmpA4"
 	nccred=$ncc
 
-	convert $tmpA1 -channel green -separate $tmpA3
-	convert $tmpA2 -channel green -separate $tmpA4
+	convert $tmpA1 $setcspace -channel green -separate $tmpA3
+	convert $tmpA2 $setcspace -channel green -separate $tmpA4
 	nccMetric "$tmpA3" "$tmpA4"
 	nccgreen=$ncc
 
-	convert $tmpA1 -channel blue -separate $tmpA3
-	convert $tmpA2 -channel blue -separate $tmpA4
+	convert $tmpA1 $setcspace -channel blue -separate $tmpA3
+	convert $tmpA2 $setcspace -channel blue -separate $tmpA4
 	nccMetric "$tmpA3" "$tmpA4"
 	nccblue=$ncc
 	
 	if [ "$aon" = "yes" ]; then
-	convert $tmpA1 -channel alpha -separate $tmpA3
-	convert $tmpA2 -channel alpha -separate $tmpA4
+	convert $tmpA1 -alpha extract $tmpA3
+	convert $tmpA2 -alpha extract $tmpA4
 	nccMetric "$tmpA3" "$tmpA4"
 	nccalpha=$ncc
 	ncc=`convert xc: -format \
@@ -268,6 +301,7 @@ else
 		"%[fx:sqrt(($nccred^2 + $nccgreen^2 + $nccblue^2)/3)]" info:`
 	fi
 	echo "Similarity Metric: $ncc"
+	echo "red=$nccred; green=$nccgreen; blue=$nccblue;"
 fi
 echo ""
 

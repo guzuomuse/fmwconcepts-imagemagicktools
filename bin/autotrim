@@ -1,6 +1,6 @@
 #!/bin/bash
 # 
-# Developed by Fred Weinhaus 12/3/2007 .......... revised 5/17/10
+# Developed by Fred Weinhaus 12/3/2007 .......... revised 4/30/2013
 # 
 # USAGE: autotrim [-f fuzzval] [-c coords] [-a angle] [-l left] [-r right ] [-t top ] [-b bottom ] infile outfile
 # USAGE: autotrim [-h or -help]
@@ -111,8 +111,7 @@ bm=0					# top bottom shift of trim (+/- is down/up)
 
 # set directory for temporary files
 dir="."    # suggestions are dir="." or dir="/tmp"
-#
-#
+
 # set up functions to report Usage and Usage with Description
 PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
 PROGDIR=`dirname $PROGNAME`            # extract directory of program
@@ -129,7 +128,7 @@ usage2()
 	echo >&2 "$PROGNAME:" "$@"
 	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
 	}
-#
+
 # function to report error messages
 errMsg()
 	{
@@ -139,15 +138,14 @@ errMsg()
 	usage1
 	exit 1
 	}
-#
+
 # function to test for minus at start of value of second part of option 1 or 2
 checkMinus()
 	{
 	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
     [ $test -eq 1 ] && errMsg "$errorMsg"
 	}
-#
-#
+
 # test for correct number of arguments and get values
 if [ $# -eq 0 ]
 	then
@@ -234,7 +232,6 @@ else
 	outfile=$2
 fi
 
-
 # test that infile provided
 [ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
 
@@ -244,15 +241,21 @@ fi
 
 # setup temporary images and auto delete upon exit
 # use mpc/cache to hold input image temporarily in memory
+# bug in IM 6.8.4.3 - 6.8.4.7 with miff
 tmpA="$dir/autotrim_$$.mpc"
 tmpB="$dir/autotrim_$$.cache"
-tmp00="$dir/autotrim_00_$$.png"
-tmp0="$dir/autotrim_0_$$.png"
-tmp1="$dir/autotrim_1_$$.png"
-tmp2="$dir/autotrim_2_$$.png"
-tmp3="$dir/autotrim_3_$$.png"
-trap "rm -f $tmpA $tmpB $tmp00 $tmp0 $tmp1 $tmp2 $tmp3; exit 0" 0
-trap "rm -f $tmpA $tmpB $tmp00 $tmp0 $tmp1 $tmp2 $tmp3; exit 1" 1 2 3 15
+tmp00="$dir/autotrim_00_$$.mpc"
+tmp00a="$dir/autotrim_00_$$.cache"
+tmp0="$dir/autotrim_0_$$.mpc"
+tmp0a="$dir/autotrim_0_$$.cache"
+tmp1="$dir/autotrim_1_$$.mpc"
+tmp1a="$dir/autotrim_1_$$.cache"
+tmp2="$dir/autotrim_2_$$.mpc"
+tmp2a="$dir/autotrim_2_$$.cache"
+tmp3="$dir/autotrim_3_$$.mpc"
+tmp3a="$dir/autotrim_3_$$.cache"
+trap "rm -f $tmpA $tmpB $tmp00 $tmp00a $tmp0 $tmp0a $tmp1 $tmp1a $tmp2 $tmp2a $tmp3 $tmp3a; exit 0" 0
+trap "rm -f $tmpA $tmpB $tmp00 $tmp00a $tmp0 $tmp0a $tmp1 $tmp1a $tmp2 $tmp2a $tmp3 $tmp3a; exit 1" 1 2 3 15
 
 
 if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
@@ -261,6 +264,17 @@ if convert -quiet -regard-warnings "$infile" +repage "$tmpA"
 else
 	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
 fi
+
+# setup setcspace
+# since do not know exact versions (see below) use simple convert test
+test=`convert xc:black -set colorspace RGB txt:- | tail -n 1 | sed -n 's/^[0-9]*,[0-9]*: [(].*[)]  #.* \(.*\)$/\1/p'`
+if [ "$test" != "black" ]; then
+	setcspace="-set colorspace sRGB"
+else
+	setcspace=""
+fi
+	
+	
 
 # function to get dimensions
 dimensions()
@@ -321,7 +335,9 @@ paddedBinary()
 		-draw "matte $coords floodfill" -fill white +opaque none $tmp0
 	
 	# make exterior black and inside white	
-	convert \( -size ${width}x${height} xc:black \) $tmp0 -composite $tmp1
+	convert \( -size ${width}x${height} xc:black \) $tmp0 -compose over -composite $tmp1
+#	convert $tmp0 -background black -compose over -flatten $tmp1
+
 	}
 
 # function to get black to white transition location along row or column
@@ -375,15 +391,23 @@ cropImage()
 			thresh=`echo "scale=1; (99 - (1.07 * $angle)) / 1" | bc`
 		fi
 		thresh=$thresh%
-		normalize="-normalize"
+#		normalize="-normalize"
+		normalize="-contrast-stretch 0"
+
 	else
 		errMsg "--- INVALID ANGLE VALUE ---"
 	fi
 
 	# average to one row and one column
-	convert $tmp1 -filter box -resize 1x${height}! $normalize -threshold $thresh $tmp2
-	convert $tmp1 -filter box -resize ${width}x1! $normalize -threshold $thresh $tmp3
-	
+#	convert $tmp1 -filter box -resize 1x${height}! $normalize -threshold $thresh $tmp2
+#	convert $tmp1 -filter box -resize ${width}x1! $normalize -threshold $thresh $tmp3
+
+	# need to add -set colorspace RGB for versions after 6.7.7.7 to convert to nonlinear gray so thresholds correctly
+	# some versions after 6.6.9.10 and before 6.7.2.10 (tested at 6.7.2.0 and 6.7.2.1) produce srgb(...) values so must trap out -set colorspace sRGB before the output so they report black and white
+	# with the above scheme a few odd versions will show some white in the corners (e.g. tests show that in 6.7.7.8, 6.7.7.10, 6.7.8.2, 6.7.8.3, 6.8.4.0, 6.8.4.2, but not before 6.7.7.8 or 6.8.1.9, 6.8.3.9, 6.8.4.3 and after)
+	convert $tmp1 -scale 1x${height}! $normalize -set colorspace RGB -threshold $thresh $setcspace $tmp2
+	convert $tmp1 -scale ${width}x1! $normalize -set colorspace RGB -threshold $thresh $setcspace $tmp3
+
 	# get top and bottom by locating first occurence of value=white from top and bottom of column
 	getTransition $tmp2 $height "inc"
 	top=$location
@@ -397,7 +421,7 @@ cropImage()
 	
 	getTransition $tmp3 $widthm1 "dec"
 	right=$location
-		
+
 	#compute start x and y and width and height
 	if [ "$trim" = "" ]
 		then
@@ -411,6 +435,9 @@ cropImage()
 		new_width=`expr $right - $left - $lt + $rt + 1`
 		new_height=`expr $bottom - $top - $tp + $bm + 1`
 	fi
+
+#echo "top=$top; bottom=$bottom; left=$left; right=$right;"		
+#echo "new_x=$new_x; new_y=$new_y; new_width=$new_width; new_height=$new_height;"		
 
 	#crop image
 	convert $tmpA[${new_width}x${new_height}+${new_x}+${new_y}] +repage $tmpA
@@ -469,8 +496,8 @@ computeRotation()
 getColor
 
 if [ "$rotang" = "" ]
-	# do processing to get simple bounding box
 	then
+	# do processing to get simple bounding box
 	# crop out any border to get bounding box
 	paddedBinary  $fuzzval
 	# process to trim (no rotation)
@@ -480,7 +507,7 @@ else
 	# alternately do processing to get inscribed, non-padded image area of rotated image
 	# crop out any border to get bounding box
 	paddedBinary  $fuzzval
-	cropImage "" ""
+	cropImage "trim" ""
 	# get rotation angle if appropriate
 	if [ `echo "$rotang == 0" | bc` -eq 1 ]
 		then

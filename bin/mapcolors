@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 3/19/2009 .......... revised 3/19/2009
+# Developed by Fred Weinhaus 3/19/2009 .......... revised 8/17/2012
 #
 # USAGE: mapcolors [-f file] [-s safecolor] [-m] [-a] [-d depth] [-t type] infile outfile
 # USAGE: mapcolors [-help]
@@ -65,6 +65,8 @@
 # to be pseudoclass rather than directclass. For some image formats and processing this can lead 
 # to smaller file sizes, but in other cases it appears that leaving it unchanged results in smaller 
 # files sizes. You may have to play with this for your image format.
+# 
+# Note: This script probably will not work for versions of IM prior to 6.4.1.4 due to a bug in +opaque
 # 
 # CAVEAT: No guarantee that this script will work on all platforms, 
 # nor that trapping of inconsistent parameters is complete and 
@@ -214,8 +216,6 @@ fi
 # test that colors_file provided
 [ "$colors_file" = "" ] && errMsg "--- NO COLOR FILE SPECIFIED ---"
 
-# set directory for temporary files
-dir="."    # suggestions are dir="." or dir="/tmp"
 
 tmpA="$dir/mapcolors_$$.mpc"
 tmpB="$dir/mapcolors_$$.cache"

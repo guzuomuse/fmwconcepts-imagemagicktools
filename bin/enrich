@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Developed by Fred Weinhaus 7/5/2010 .......... 7/6/2010
+# Developed by Fred Weinhaus 7/5/2010 .......... 2/23/2013
 #
 # USAGE: enrich [-r radii] [-t transparency] [-w weights] [-b bias] [-c compose] infile outfile
 # USAGE: enrich [-help or -h]
@@ -165,14 +165,6 @@ else
 					   test2=`echo "$bias >= 100" | bc`
 					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- BIAS=$bias MUST BE FLOAT GREATER THAN 0 AND LESS THAN 100 ---"
  					   ;;
-				-t)    # get tolers
-					   shift  # to get the next parameter
-					   # test if parameter starts with minus sign 
-					   errorMsg="--- INVALID TOLERANCES SPECIFICATION ---"
-					   checkMinus "$1"
-					   tolers=`expr "$1" : '\([,0-9]*\)'`
-					   [ "$tolers" = "" ] && errMsg "--- TOLERANCES=$tolers MUST BE TWO COMMA DELIMITED NON-NEGATIVE INTEGERS ---"
-					   ;;
 				-c)    # get compose
 					   shift  # to get the next parameter
 					   # test if parameter starts with minus sign 
@@ -222,8 +214,8 @@ compose2=`echo $compose | cut -d, -f 2`
 [ "$compose1" = "" -o "$compose2" = "" ] && errMsg "--- TWO COMPOSE METHODS MUST BE SPECIFIED ---"
 
 # set up temp files
-tmpA1="$dir/huemap_A_$$.mpc"
-tmpA2="$dir/huemap_A_$$.cache"
+tmpA1="$dir/enrich_A_$$.mpc"
+tmpA2="$dir/enrich_A_$$.cache"
 trap "rm -f $tmpA1 $tmpA2; exit 0" 0
 trap "rm -f $tmpA1 $tmpA2; exit 1" 1 2 3 15
 
@@ -237,15 +229,35 @@ wt2=-$wt2
 # change bias from percent to range 0 to 1
 bias=`convert xc: -format "%[fx:$bias/100]" info:`
 
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER /!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# note -evaluate set seems to change the opacity whether -channel A means opacity (before IM 6.7.6.8) or transparency thereafter
+# however, at IM 6.7.6.8 -channel a became transparency and not opacity
+if [ "$im_version" -ge "06070608" ]; then
+	negating="-negate"
+else
+	negating=""
+fi
+negating=""
+#echo "neg=$negating"
+
+# speed up larger radius blur by resizing down, using smaller blur and resizing back up
+rad1=`convert xc: -format "%[fx:$rad1/5]" info:`
+ww=`convert $tmpA1 -format "%w" info:`
+hh=`convert $tmpA1 -format "%h" info:`
+
+
 convert $tmpA1 \
-\( -clone 0 -blur 0x$rad1 \) \
+\( -clone 0 -resize 20% -blur 0x$rad1 -resize ${ww}x${hh}\! \) \
 \( -clone 0 -clone 1 +swap -compose mathematics \
 -set option:compose:args "0,$wt1,$wt2,$bias" -composite \
--matte -channel A -evaluate set ${alpha1}% +channel \) \
+-matte -channel A $negating -evaluate set ${alpha1}% +channel \) \
 \( -clone 0 -blur 0x$rad2 \) \
 \( -clone 0 -clone 3 +swap -compose mathematics \
 -set option:compose:args "0,$wt1,$wt2,$bias" -composite \
--matte -channel A -evaluate set ${alpha2}% +channel \) \
+-matte -channel A $negating -evaluate set ${alpha2}% +channel \) \
 \( -clone 0 -clone 2 -compose hardlight -composite \
 -clone 4 -compose overlay -composite \) \
 -delete 0-4 $outfile
